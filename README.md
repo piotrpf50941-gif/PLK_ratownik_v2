@@ -27,7 +27,7 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 - import i eksport kopii JSON,
 - tryb ciemny i większy tekst,
 - instalacja jako PWA i działanie offline,
-- zachowane czytelne grafiki z wcześniejszej wersji.
+- spójny zestaw nowych grafik dopasowanych do każdej procedury.
 
 ## Uruchomienie lokalne
 
