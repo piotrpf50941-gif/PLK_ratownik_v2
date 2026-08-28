@@ -1,0 +1,231 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+class FakeClassList {
+  constructor(initial = []) { this.values = new Set(initial); }
+  add(...names) { names.forEach((name) => this.values.add(name)); }
+  remove(...names) { names.forEach((name) => this.values.delete(name)); }
+  contains(name) { return this.values.has(name); }
+  toggle(name, force) {
+    const enabled = force === undefined ? !this.values.has(name) : Boolean(force);
+    if (enabled) this.values.add(name); else this.values.delete(name);
+    return enabled;
+  }
+}
+
+class FakeElement {
+  constructor(id = '', options = {}) {
+    this.id = id;
+    this.dataset = { ...(options.dataset || {}) };
+    this.classList = new FakeClassList(options.classes || []);
+    this.attributes = new Map();
+    this.listeners = new Map();
+    this.style = {};
+    this.hidden = Boolean(options.hidden);
+    this.disabled = false;
+    this.innerHTML = '';
+    this.textContent = '';
+    this.value = options.value || '';
+    this.files = [];
+    this.open = false;
+    this.childSpan = null;
+    this.parentToolCard = null;
+  }
+  addEventListener(type, callback) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(callback);
+  }
+  dispatch(type, target = this) {
+    const event = {
+      type,
+      target,
+      currentTarget: this,
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; }
+    };
+    for (const callback of this.listeners.get(type) || []) callback(event);
+    return event;
+  }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }
+  removeAttribute(name) { this.attributes.delete(name); }
+  querySelector(selector) {
+    if (selector === 'span') {
+      if (!this.childSpan) this.childSpan = new FakeElement(this.id + '-span');
+      return this.childSpan;
+    }
+    return null;
+  }
+  closest(selector) {
+    if (selector === '.tool-card') return this.parentToolCard;
+    const checks = [
+      ['data-nav', 'nav'], ['data-go', 'go'], ['data-procedure', 'procedure'],
+      ['data-close-dialog', 'closeDialog'], ['data-category', 'category'],
+      ['data-resource', 'resource'], ['data-entity', 'entity'],
+      ['data-delete-entity', 'deleteEntity']
+    ];
+    for (const [attribute, key] of checks) {
+      if (selector.includes('[' + attribute + ']') && this.dataset[key] !== undefined) return this;
+    }
+    return null;
+  }
+  appendChild() {}
+  remove() {}
+  focus() {}
+  select() {}
+  scrollTo() {}
+  click() { this.dispatch('click'); }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
+  reportValidity() { return true; }
+}
+
+const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
+elements.get('reportCasualties').value = '1';
+
+const screens = ['home', 'procedures', 'resources', 'tools'].map((name) => {
+  const element = elements.get('screen-' + name);
+  element.classList.add('screen');
+  return element;
+});
+const dialogs = ['procedureDialog', 'emergencyDialog', 'reportDialog', 'dataDialog'].map((id) => elements.get(id));
+const navigation = ['home', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
+const resourceTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { resource: name } }));
+const entityTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { entity: name } }));
+const metaTheme = new FakeElement('meta-theme');
+const documentListeners = new Map();
+
+const fakeDocument = {
+  documentElement: new FakeElement('html'),
+  body: new FakeElement('body'),
+  getElementById(id) { return elements.get(id) || null; },
+  querySelector(selector) { return selector === 'meta[name="theme-color"]' ? metaTheme : null; },
+  querySelectorAll(selector) {
+    if (selector === '.screen') return screens;
+    if (selector === '[data-nav]') return navigation;
+    if (selector === '#resourceTabs [data-resource]') return resourceTabs;
+    if (selector === '#dataTabs [data-entity]') return entityTabs;
+    if (selector === 'dialog') return dialogs;
+    return [];
+  },
+  addEventListener(type, callback) {
+    if (!documentListeners.has(type)) documentListeners.set(type, []);
+    documentListeners.get(type).push(callback);
+  },
+  dispatch(type, target) {
+    const event = { type, target, currentTarget: this, preventDefault() {} };
+    for (const callback of documentListeners.get(type) || []) callback(event);
+  },
+  createElement(tag) { return new FakeElement(tag); },
+  execCommand() { return true; }
+};
+
+const storage = new Map();
+const windowListeners = new Map();
+const fakeLocation = { hash: '#home', reload() {} };
+const fakeWindow = {
+  document: fakeDocument,
+  location: fakeLocation,
+  isSecureContext: true,
+  addEventListener(type, callback) {
+    if (!windowListeners.has(type)) windowListeners.set(type, []);
+    windowListeners.get(type).push(callback);
+  },
+  scrollTo() {},
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  confirm() { return true; }
+};
+
+const context = {
+  window: fakeWindow,
+  document: fakeDocument,
+  navigator: { onLine: true },
+  localStorage: {
+    getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+    setItem(key, value) { storage.set(key, String(value)); },
+    removeItem(key) { storage.delete(key); }
+  },
+  history: {
+    replaceState(_state, _title, hash) { fakeLocation.hash = hash; }
+  },
+  location: fakeLocation,
+  console,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  URL,
+  Blob,
+  FormData,
+  FileReader: class {},
+  structuredClone,
+  encodeURIComponent,
+  decodeURIComponent,
+  Date,
+  Math,
+  JSON,
+  Number,
+  String,
+  Array,
+  Map,
+  Set,
+  Promise
+};
+fakeWindow.window = fakeWindow;
+fakeWindow.navigator = context.navigator;
+fakeWindow.localStorage = context.localStorage;
+fakeWindow.history = context.history;
+
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
+assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
+vm.runInContext(fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8'), context, { filename: 'app.js' });
+
+assert.match(elements.get('quickActions').innerHTML, /Brak oddechu \/ RKO/);
+assert.equal((elements.get('procedureList').innerHTML.match(/data-procedure=/g) || []).length, 10);
+assert.equal(elements.get('aedCount').textContent, 3);
+assert.match(elements.get('resourceList').innerHTML, /AED — wejście główne/);
+assert.equal(elements.get('screen-home').hidden, false);
+assert.equal(elements.get('screen-procedures').hidden, true);
+
+elements.get('procedureSearch').value = 'udar';
+elements.get('procedureSearch').dispatch('input');
+assert.match(elements.get('procedureList').innerHTML, /Podejrzenie udaru/);
+assert.doesNotMatch(elements.get('procedureList').innerHTML, /RKO dorosłego i AED/);
+
+const procedureTarget = new FakeElement('', { dataset: { procedure: 'rko-dorosly' } });
+fakeDocument.dispatch('click', procedureTarget);
+assert.equal(elements.get('procedureDialog').open, true);
+assert.match(elements.get('procedureContent').innerHTML, /RKO dorosłego i AED/);
+assert.equal(elements.get('stepProgressText').textContent, 'Krok 1 z 7');
+elements.get('nextStepButton').dispatch('click');
+assert.equal(elements.get('stepProgressText').textContent, 'Krok 2 z 7');
+
+const toolsTarget = new FakeElement('', { dataset: { nav: 'tools' } });
+fakeDocument.dispatch('click', toolsTarget);
+assert.equal(elements.get('screen-tools').hidden, false);
+assert.equal(elements.get('screen-home').hidden, true);
+
+elements.get('openReportButton').dispatch('click');
+elements.get('reportType').value = 'Wypadek kolejowy';
+elements.get('reportPlace').value = 'LK 003, tor 1, km 184,500';
+elements.get('reportDescription').value = 'Jedna osoba poszkodowana';
+const submitEvent = elements.get('reportForm').dispatch('submit');
+assert.equal(submitEvent.defaultPrevented, true);
+assert.equal(elements.get('reportResultBlock').hidden, false);
+assert.match(elements.get('reportResult').value, /LK 003, tor 1, km 184,500/);
+
+elements.get('darkModeToggle').dispatch('click');
+assert.equal(fakeDocument.documentElement.classList.contains('dark'), true);
+assert.ok(storage.has('ratownik_plk_v2_state'));
+
+elements.get('resourceTabs').dispatch('click', resourceTabs[1]);
+assert.match(elements.get('resourceList').innerHTML, /Apteczka — portiernia/);
+
+console.log('Test DOM: OK (start, wyszukiwarka, procedura krokowa, nawigacja, raport, motyw, zasoby)');

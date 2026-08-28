@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123b66">
+  <meta name="description" content="Ratownik PLK v2 — przejrzysta, mobilna aplikacja pierwszej pomocy dla środowiska kolejowego.">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Ratownik PLK — wersja v2</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Przejdź do treści</a>
+
+  <header class="app-header">
+    <button class="brand" type="button" data-go="home" aria-label="Przejdź na start">
+      <img src="assets/icons/icon-192.png" alt="" width="42" height="42">
+      <span class="brand-copy">
+        <strong>Ratownik PLK</strong>
+        <small>prototyp v2</small>
+      </span>
+    </button>
+    <div class="header-actions">
+      <span id="networkBadge" class="status-pill" aria-live="polite"><i></i><span>Online</span></span>
+      <button id="installButton" class="icon-button" type="button" hidden aria-label="Zainstaluj aplikację" title="Zainstaluj aplikację">↓</button>
+      <button id="themeButton" class="icon-button" type="button" aria-label="Zmień motyw" title="Zmień motyw">☾</button>
+    </div>
+  </header>
+
+  <div id="updateBanner" class="update-banner" hidden>
+    <span>Dostępna jest nowa wersja aplikacji.</span>
+    <button id="updateButton" type="button">Odśwież</button>
+  </div>
+
+  <main id="mainContent" class="app-shell">
+    <section id="screen-home" class="screen active" aria-labelledby="homeTitle">
+      <article class="emergency-hero">
+        <div class="hero-copy">
+          <span class="eyebrow">TRYB NAGŁY</span>
+          <h1 id="homeTitle">Pomoc bez szukania po menu</h1>
+          <p>Wezwij służby albo od razu uruchom prowadzenie krok po kroku.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="button call-button" href="tel:112" aria-label="Zadzwoń pod numer alarmowy 112">
+            <span class="button-icon" aria-hidden="true">☎</span>
+            <span><small>Zadzwoń teraz</small><strong>112</strong></span>
+          </a>
+          <button id="emergencyGuideButton" class="button guide-button" type="button">
+            <span class="button-icon" aria-hidden="true">→</span>
+            <span><small>Nie wiesz, co wybrać?</small><strong>Prowadź mnie</strong></span>
+          </button>
+        </div>
+      </article>
+
+      <section class="section-block" aria-labelledby="quickTitle">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">JEDNO DOTKNIĘCIE</span>
+            <h2 id="quickTitle">Co się wydarzyło?</h2>
+          </div>
+          <button class="text-button" type="button" data-go="procedures">Wszystkie procedury</button>
+        </div>
+        <div id="quickActions" class="quick-grid"></div>
+      </section>
+
+      <section class="safety-strip" aria-label="Najważniejsza kolejność działania">
+        <div class="safety-icon" aria-hidden="true">!</div>
+        <div>
+          <strong>Najpierw własne bezpieczeństwo</strong>
+          <p>Ruch kolejowy, sieć trakcyjna, ogień i ruch pojazdów mogą nadal zagrażać.</p>
+        </div>
+      </section>
+
+      <section class="section-block sequence-section" aria-labelledby="sequenceTitle">
+        <div class="section-heading compact">
+          <div>
+            <span class="section-kicker">PIERWSZA MINUTA</span>
+            <h2 id="sequenceTitle">Prosta sekwencja 1–2–3</h2>
+          </div>
+        </div>
+        <ol class="sequence-list">
+          <li><span>1</span><div><strong>Zabezpiecz miejsce</strong><small>Nie podchodź, dopóki nie jest bezpiecznie.</small></div></li>
+          <li><span>2</span><div><strong>Oceń reakcję i oddech</strong><small>Oddech sprawdzaj nie dłużej niż 10 sekund.</small></div></li>
+          <li><span>3</span><div><strong>Wezwij pomoc i działaj</strong><small>112, RKO, AED lub tamowanie krwotoku.</small></div></li>
+        </ol>
+      </section>
+
+      <section class="location-card" aria-labelledby="locationTitle">
+        <div class="location-copy">
+          <span class="location-symbol" aria-hidden="true">⌖</span>
+          <div>
+            <h2 id="locationTitle">Lokalizacja dla służb</h2>
+            <p id="locationSummary">Nie pobrano jeszcze pozycji GPS.</p>
+          </div>
+        </div>
+        <div class="location-actions">
+          <button id="getLocationButton" class="button secondary" type="button">Pobierz GPS</button>
+          <button id="openReportButton" class="button secondary" type="button">Przygotuj zgłoszenie</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="screen-procedures" class="screen" aria-labelledby="proceduresTitle" hidden>
+      <header class="screen-heading">
+        <span class="section-kicker">BAZA WIEDZY</span>
+        <h1 id="proceduresTitle">Procedury ratunkowe</h1>
+        <p>Wybierz zdarzenie. Każda procedura prowadzi przez jeden krok naraz.</p>
+      </header>
+      <label class="search-box">
+        <span aria-hidden="true">⌕</span>
+        <span class="sr-only">Szukaj procedury</span>
+        <input id="procedureSearch" type="search" placeholder="Szukaj: RKO, krwotok, prąd…" autocomplete="off">
+        <button id="clearProcedureSearch" type="button" aria-label="Wyczyść wyszukiwanie" hidden>×</button>
+      </label>
+      <div id="procedureFilters" class="chip-row" role="group" aria-label="Kategorie procedur"></div>
+      <div id="procedureList" class="procedure-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="screen-resources" class="screen" aria-labelledby="resourcesTitle" hidden>
+      <header class="screen-heading resource-heading">
+        <div>
+          <span class="section-kicker">POMOC W POBLIŻU</span>
+          <h1 id="resourcesTitle">Zasoby ratunkowe</h1>
+          <p>AED, apteczki i ratownicy w jednej, przeszukiwalnej liście.</p>
+        </div>
+        <button id="resourceLocationButton" class="button secondary" type="button">Użyj GPS</button>
+      </header>
+      <div id="resourceTabs" class="segment-control" role="tablist" aria-label="Rodzaj zasobu">
+        <button type="button" role="tab" aria-selected="true" data-resource="aeds">AED <span id="aedCount">0</span></button>
+        <button type="button" role="tab" aria-selected="false" data-resource="kits">Apteczki <span id="kitCount">0</span></button>
+        <button type="button" role="tab" aria-selected="false" data-resource="rescuers">Ratownicy <span id="rescuerCount">0</span></button>
+      </div>
+      <label class="search-box resource-search">
+        <span aria-hidden="true">⌕</span>
+        <span class="sr-only">Szukaj zasobu</span>
+        <input id="resourceSearch" type="search" placeholder="Szukaj po nazwie lub lokalizacji" autocomplete="off">
+      </label>
+      <p id="resourceHint" class="context-hint">Włącz GPS, aby posortować AED według odległości.</p>
+      <div id="resourceList" class="resource-list" aria-live="polite"></div>
+    </section>
+
+    <section id="screen-tools" class="screen" aria-labelledby="toolsTitle" hidden>
+      <header class="screen-heading">
+        <span class="section-kicker">NARZĘDZIA I USTAWIENIA</span>
+        <h1 id="toolsTitle">Więcej</h1>
+        <p>Najważniejsze narzędzia są osobno, żeby nie przeciążać ekranu alarmowego.</p>
+      </header>
+
+      <section class="tool-grid" aria-label="Narzędzia ratownika">
+        <article class="tool-card metronome-card">
+          <div class="tool-icon" aria-hidden="true">♥</div>
+          <div>
+            <span class="section-kicker">RKO</span>
+            <h2>Metronom 110/min</h2>
+            <p>Pomaga utrzymać rytm uciśnięć klatki piersiowej.</p>
+          </div>
+          <button id="metronomeButton" class="button primary" type="button">Uruchom metronom</button>
+        </article>
+        <article class="tool-card timer-card">
+          <div class="tool-icon" aria-hidden="true">10</div>
+          <div>
+            <span class="section-kicker">OCENA ODDECHU</span>
+            <h2 id="breathTimerValue">10 sekund</h2>
+            <p>Odliczanie maksymalnego czasu oceny oddechu.</p>
+          </div>
+          <button id="breathTimerButton" class="button secondary" type="button">Rozpocznij odliczanie</button>
+        </article>
+      </section>
+
+      <section class="settings-card" aria-labelledby="displayTitle">
+        <div class="settings-title"><span aria-hidden="true">Aa</span><div><h2 id="displayTitle">Czytelność</h2><p>Dostosuj aplikację do warunków pracy.</p></div></div>
+        <div class="setting-row"><div><strong>Większy tekst</strong><small>Powiększa treść procedur i przyciski.</small></div><button id="largeTextToggle" class="switch" type="button" role="switch" aria-checked="false"><span></span></button></div>
+        <div class="setting-row"><div><strong>Tryb ciemny</strong><small>Mniejsza jasność ekranu w nocy.</small></div><button id="darkModeToggle" class="switch" type="button" role="switch" aria-checked="false"><span></span></button></div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="dataTitle">
+        <div class="settings-title"><span aria-hidden="true">▣</span><div><h2 id="dataTitle">Dane lokalne</h2><p>Zasoby są zapisane wyłącznie na tym urządzeniu.</p></div></div>
+        <div class="data-summary">
+          <span><strong id="dataAedCount">0</strong>AED</span>
+          <span><strong id="dataKitCount">0</strong>apteczki</span>
+          <span><strong id="dataRescuerCount">0</strong>ratownicy</span>
+        </div>
+        <div class="button-row">
+          <button id="manageDataButton" class="button primary" type="button">Zarządzaj danymi</button>
+          <button id="exportButton" class="button secondary" type="button">Eksport JSON</button>
+          <button id="importButton" class="button secondary" type="button">Import JSON</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
+        </div>
+      </section>
+
+      <section class="about-card">
+        <div>
+          <span class="section-kicker">WERSJA PORÓWNAWCZA</span>
+          <h2>Dlaczego ten układ?</h2>
+          <p>Tryb alarmowy zawiera tylko decyzje potrzebne natychmiast. Baza wiedzy, zasoby i administracja mają własne ekrany.</p>
+        </div>
+        <details>
+          <summary>Ważna informacja medyczna</summary>
+          <p>Aplikacja jest pomocą pamięciową i prototypem. Nie zastępuje szkolenia, oceny sytuacji ani poleceń dyspozytora numeru 112. Dane zakładowe widoczne w wersji demonstracyjnej są przykładowe.</p>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Główna nawigacja">
+    <button type="button" class="active" data-nav="home" aria-current="page"><span aria-hidden="true">⌂</span><small>Start</small></button>
+    <button type="button" data-nav="procedures"><span aria-hidden="true">✚</span><small>Procedury</small></button>
+    <button type="button" data-nav="resources"><span aria-hidden="true">⌖</span><small>Zasoby</small></button>
+    <button type="button" data-nav="tools"><span aria-hidden="true">•••</span><small>Więcej</small></button>
+  </nav>
+
+  <dialog id="procedureDialog" class="procedure-dialog" aria-label="Procedura ratunkowa krok po kroku">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <button class="round-button" type="button" data-close-dialog="procedureDialog" aria-label="Zamknij procedurę">×</button>
+        <span id="procedureCategory" class="dialog-category"></span>
+        <a class="round-button emergency-mini" href="tel:112" aria-label="Zadzwoń pod 112">112</a>
+      </header>
+      <div id="procedureContent" class="procedure-content"></div>
+      <footer class="step-footer">
+        <div class="step-progress"><span id="stepProgressText">Krok 1 z 1</span><div><i id="stepProgressBar"></i></div></div>
+        <div class="step-buttons">
+          <button id="previousStepButton" class="button secondary" type="button">Wstecz</button>
+          <button id="nextStepButton" class="button primary" type="button">Następny krok</button>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="emergencyDialog" class="sheet-dialog" aria-label="Szybki wybór zdarzenia">
+    <div class="sheet-shell">
+      <header class="sheet-header">
+        <div><span class="section-kicker">SZYBKI WYBÓR</span><h2>Co widzisz?</h2></div>
+        <button class="round-button" type="button" data-close-dialog="emergencyDialog" aria-label="Zamknij">×</button>
+      </header>
+      <p>Wybierz najlepiej pasującą sytuację. W zagrożeniu życia równocześnie wezwij 112.</p>
+      <div id="emergencyChoices" class="emergency-choice-list"></div>
+      <a class="button call-button compact-call" href="tel:112"><span>☎</span><strong>Zadzwoń pod 112</strong></a>
+    </div>
+  </dialog>
+
+  <dialog id="reportDialog" class="sheet-dialog" aria-label="Generator zgłoszenia zdarzenia">
+    <form id="reportForm" class="sheet-shell">
+      <header class="sheet-header">
+        <div><span class="section-kicker">GOTOWA TREŚĆ</span><h2>Zgłoszenie zdarzenia</h2></div>
+        <button class="round-button" type="button" data-close-dialog="reportDialog" aria-label="Zamknij">×</button>
+      </header>
+      <div class="form-grid">
+        <label><span>Rodzaj zdarzenia</span><select id="reportType"></select></label>
+        <label><span>Liczba poszkodowanych</span><input id="reportCasualties" type="number" min="1" value="1"></label>
+        <label class="wide"><span>Miejsce / linia / tor / kilometr</span><input id="reportPlace" placeholder="np. LK 003, tor 1, km 184,500"></label>
+        <label class="wide"><span>Dojazd lub punkt orientacyjny</span><input id="reportAccess" placeholder="np. wjazd od ul. Kolejowej, brama nr 2"></label>
+        <label class="wide"><span>Krótki opis stanu</span><textarea id="reportDescription" rows="3" placeholder="np. osoba nieprzytomna, brak prawidłowego oddechu"></textarea></label>
+      </div>
+      <button id="generateReportButton" class="button primary full-width" type="button">Utwórz treść zgłoszenia</button>
+      <div id="reportResultBlock" class="report-result" hidden>
+        <label><span>Treść do przekazania dyspozytorowi</span><textarea id="reportResult" rows="8" readonly></textarea></label>
+        <div class="button-row">
+          <button id="copyReportButton" class="button primary" type="button">Kopiuj treść</button>
+          <a class="button secondary" href="tel:112">Zadzwoń 112</a>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dataDialog" class="data-dialog" aria-label="Zarządzanie lokalnymi zasobami">
+    <div class="dialog-shell data-dialog-shell">
+      <header class="dialog-header data-dialog-header">
+        <div><span class="section-kicker">EDYCJA LOKALNA</span><h2>Zarządzaj zasobami</h2></div>
+        <button class="round-button" type="button" data-close-dialog="dataDialog" aria-label="Zamknij">×</button>
+      </header>
+      <div id="dataTabs" class="segment-control data-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-entity="aeds">AED</button>
+        <button type="button" role="tab" aria-selected="false" data-entity="kits">Apteczki</button>
+        <button type="button" role="tab" aria-selected="false" data-entity="rescuers">Ratownicy</button>
+      </div>
+      <form id="entityForm" class="entity-form"></form>
+      <div class="data-list-header"><h3>Zapisane pozycje</h3><button id="resetDemoButton" class="text-button danger-text" type="button">Przywróć dane demo</button></div>
+      <div id="entityList" class="entity-list"></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

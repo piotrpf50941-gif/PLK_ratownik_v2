@@ -1,0 +1,38 @@
+name: Publikacja GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v4
+      - name: Sprawdź składnię JavaScript
+        run: node --check app.js && node --check data.js && node --check sw.js
+      - name: Uruchom testy integralności i DOM
+        run: python3 tests/validate.py && node tests/smoke.mjs
+      - name: Skonfiguruj Pages
+        uses: actions/configure-pages@v5
+      - name: Przygotuj artefakt
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Opublikuj
+        id: deployment
+        uses: actions/deploy-pages@v4
