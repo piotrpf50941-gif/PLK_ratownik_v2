@@ -5,6 +5,9 @@
   const STORAGE_KEY = 'ratownik_plk_v2_state';
   const VALID_SCREENS = ['home', 'procedures', 'resources', 'tools'];
   const VALID_ENTITIES = ['aeds', 'kits', 'rescuers'];
+  const BREATH_PREP_SECONDS = 2;
+  const BREATH_ASSESS_SECONDS = 10;
+  const BREATH_TOTAL_SECONDS = BREATH_PREP_SECONDS + BREATH_ASSESS_SECONDS;
 
   const $ = function (id) { return document.getElementById(id); };
   const all = function (selector, root) { return Array.from((root || document).querySelectorAll(selector)); };
@@ -20,7 +23,10 @@
   let deferredInstallPrompt = null;
   let toastTimer = null;
   let breathTimer = null;
-  let breathSeconds = 10;
+  let breathSeconds = BREATH_TOTAL_SECONDS;
+  let breathPhase = 'idle';
+  let breathStartedAt = 0;
+  let breathAudioNodes = [];
   let audioContext = null;
   let metronomeScheduler = null;
   let nextMetronomeBeat = 0;
@@ -492,19 +498,32 @@
     saveState();
   }
 
-  function scheduleBeat(time) {
-    if (!audioContext) return;
+  function ensureAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContext = audioContext || new AudioContextClass();
+    if (audioContext.state === 'suspended') audioContext.resume();
+    return audioContext;
+  }
+
+  function scheduleTone(time, frequency, duration, volume) {
+    if (!audioContext) return null;
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
     oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(720, time);
+    oscillator.frequency.setValueAtTime(frequency, time);
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.18, time + 0.006);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.065);
+    gain.gain.exponentialRampToValueAtTime(volume, time + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     oscillator.connect(gain);
     gain.connect(audioContext.destination);
     oscillator.start(time);
-    oscillator.stop(time + 0.075);
+    oscillator.stop(time + duration + 0.02);
+    return oscillator;
+  }
+
+  function scheduleBeat(time) {
+    scheduleTone(time, 720, 0.065, 0.18);
   }
 
   function metronomeLoop() {
@@ -515,14 +534,13 @@
   }
 
   function startMetronome() {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
+    if (breathTimer || breathPhase === 'complete') stopBreathTimer(true);
+    const context = ensureAudioContext();
+    if (!context) {
       showToast('Przeglądarka nie obsługuje metronomu audio.');
       return;
     }
-    audioContext = audioContext || new AudioContextClass();
-    if (audioContext.state === 'suspended') audioContext.resume();
-    nextMetronomeBeat = audioContext.currentTime + 0.05;
+    nextMetronomeBeat = context.currentTime + 0.05;
     metronomeLoop();
     metronomeScheduler = window.setInterval(metronomeLoop, 25);
     $('metronomeButton').textContent = 'Zatrzymaj metronom';
@@ -543,38 +561,117 @@
     else startMetronome();
   }
 
-  function updateBreathTimer() {
-    $('breathTimerValue').textContent = breathSeconds + (breathSeconds === 1 ? ' sekunda' : ' sekund');
+  function cancelBreathAudio() {
+    breathAudioNodes.forEach(function (node) {
+      try { node.stop(); } catch (error) { /* Sygnał mógł już wybrzmieć. */ }
+    });
+    breathAudioNodes = [];
+  }
+
+  function addBreathTone(time, frequency, duration, volume) {
+    const node = scheduleTone(time, frequency, duration, volume);
+    if (node) breathAudioNodes.push(node);
+  }
+
+  function scheduleBreathCues(startTime) {
+    const assessmentStart = startTime + BREATH_PREP_SECONDS;
+    addBreathTone(assessmentStart, 920, 0.14, 0.38);
+    addBreathTone(assessmentStart + 0.22, 1200, 0.18, 0.42);
+    for (let second = 1; second < BREATH_ASSESS_SECONDS; second += 1) {
+      addBreathTone(assessmentStart + second, 700, 0.07, 0.22);
+    }
+    addBreathTone(assessmentStart + BREATH_ASSESS_SECONDS, 520, 0.55, 0.48);
+  }
+
+  function updateBreathTimerDisplay() {
+    if (breathPhase === 'prepare') {
+      $('breathTimerValue').textContent = 'Przygotowanie: ' + breathSeconds + ' s';
+      $('breathTimerStatus').textContent = 'Udrożnij drogi oddechowe. Po podwójnym sygnale rozpocznij obserwację.';
+      return;
+    }
+    if (breathPhase === 'assess') {
+      $('breathTimerValue').textContent = 'Ocena: ' + breathSeconds + ' s';
+      $('breathTimerStatus').textContent = 'START — obserwuj ruch klatki piersiowej, słuchaj i wyczuwaj oddech.';
+      return;
+    }
+    if (breathPhase === 'complete') {
+      $('breathTimerValue').textContent = 'Koniec oceny';
+      $('breathTimerStatus').textContent = '10 sekund minęło — oceń, czy oddech jest prawidłowy.';
+      return;
+    }
+    $('breathTimerValue').textContent = '12 sekund łącznie';
+    $('breathTimerStatus').textContent = '2 sekundy na przygotowanie, potem 10 sekund oceny z sygnałem startu, każdej sekundy i końca.';
   }
 
   function stopBreathTimer(reset) {
     window.clearInterval(breathTimer);
     breathTimer = null;
-    if (reset) breathSeconds = 10;
-    updateBreathTimer();
-    $('breathTimerButton').textContent = 'Rozpocznij odliczanie';
+    cancelBreathAudio();
+    breathStartedAt = 0;
+    if (reset) {
+      breathSeconds = BREATH_TOTAL_SECONDS;
+      breathPhase = 'idle';
+    }
+    updateBreathTimerDisplay();
+    $('breathTimerButton').textContent = 'Rozpocznij ocenę';
     $('breathTimerButton').closest('.tool-card').classList.remove('running');
+  }
+
+  function completeBreathTimer() {
+    window.clearInterval(breathTimer);
+    breathTimer = null;
+    breathStartedAt = 0;
+    breathSeconds = 0;
+    breathPhase = 'complete';
+    updateBreathTimerDisplay();
+    $('breathTimerButton').textContent = 'Uruchom ponownie';
+    $('breathTimerButton').closest('.tool-card').classList.remove('running');
+    if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
+    showToast('10 sekund oceny minęło — podejmij decyzję o oddechu.');
+  }
+
+  function updateBreathTimer() {
+    const elapsedSeconds = (Date.now() - breathStartedAt) / 1000;
+    if (elapsedSeconds >= BREATH_TOTAL_SECONDS) {
+      completeBreathTimer();
+      return;
+    }
+    if (elapsedSeconds >= BREATH_PREP_SECONDS) {
+      if (breathPhase !== 'assess') {
+        breathPhase = 'assess';
+        if (navigator.vibrate) navigator.vibrate(140);
+      }
+      breathSeconds = Math.ceil(BREATH_TOTAL_SECONDS - elapsedSeconds);
+    } else {
+      breathPhase = 'prepare';
+      breathSeconds = Math.ceil(BREATH_PREP_SECONDS - elapsedSeconds);
+    }
+    updateBreathTimerDisplay();
+  }
+
+  function startBreathTimer() {
+    if (metronomeScheduler) stopMetronome();
+    cancelBreathAudio();
+    const context = ensureAudioContext();
+    breathPhase = 'prepare';
+    breathSeconds = BREATH_PREP_SECONDS;
+    breathStartedAt = Date.now();
+    updateBreathTimerDisplay();
+    $('breathTimerButton').textContent = 'Zatrzymaj i wyzeruj';
+    $('breathTimerButton').closest('.tool-card').classList.add('running');
+    if (context) scheduleBreathCues(context.currentTime);
+    else showToast('Brak dźwięku w tej przeglądarce — obserwuj odliczanie i wibracje.');
+    breathTimer = window.setInterval(updateBreathTimer, 100);
+    showToast('Masz 2 sekundy na przygotowanie. Podwójny sygnał oznacza START.');
   }
 
   function toggleBreathTimer() {
     if (breathTimer) {
       stopBreathTimer(true);
+      showToast('Ocena oddechu została przerwana.');
       return;
     }
-    breathSeconds = 10;
-    updateBreathTimer();
-    $('breathTimerButton').textContent = 'Zatrzymaj i wyzeruj';
-    $('breathTimerButton').closest('.tool-card').classList.add('running');
-    breathTimer = window.setInterval(function () {
-      breathSeconds -= 1;
-      updateBreathTimer();
-      if (breathSeconds <= 0) {
-        stopBreathTimer(false);
-        $('breathTimerValue').textContent = 'Czas minął';
-        if (navigator.vibrate) navigator.vibrate([180, 100, 180]);
-        showToast('10 sekund minęło — podejmij decyzję o oddechu.');
-      }
-    }, 1000);
+    startBreathTimer();
   }
 
   function renderEntityForm() {
@@ -904,6 +1001,7 @@
     renderResources();
     renderDataManager();
     applyPreferences();
+    updateBreathTimerDisplay();
     updateNetworkStatus();
     attachEvents();
     setupInstallPrompt();

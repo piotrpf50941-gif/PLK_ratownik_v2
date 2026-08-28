@@ -82,6 +82,12 @@ class FakeElement {
 }
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const homeMarkup = html.slice(html.indexOf('<section id="screen-home"'), html.indexOf('<section id="screen-procedures"'));
+const toolsMarkup = html.slice(html.indexOf('<section id="screen-tools"'), html.indexOf('</main>'));
+assert.match(homeMarkup, /id="metronomeButton"/);
+assert.match(homeMarkup, /id="breathTimerButton"/);
+assert.doesNotMatch(toolsMarkup, /id="metronomeButton"/);
+assert.doesNotMatch(toolsMarkup, /id="breathTimerButton"/);
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
 elements.get('reportCasualties').value = '1';
@@ -95,6 +101,8 @@ const dialogs = ['procedureDialog', 'emergencyDialog', 'reportDialog', 'dataDial
 const navigation = ['home', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
 const resourceTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { resource: name } }));
 const entityTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { entity: name } }));
+elements.get('metronomeButton').parentToolCard = new FakeElement('metronome-card', { classes: ['tool-card'] });
+elements.get('breathTimerButton').parentToolCard = new FakeElement('breath-timer-card', { classes: ['tool-card'] });
 const metaTheme = new FakeElement('meta-theme');
 const documentListeners = new Map();
 
@@ -125,20 +133,61 @@ const fakeDocument = {
 
 const storage = new Map();
 const windowListeners = new Map();
+const scheduledIntervals = new Map();
+const scheduledTimeouts = new Map();
+const scheduledTones = [];
+let nextTimerId = 1;
+
+class FakeAudioContext {
+  constructor() {
+    this.currentTime = 100;
+    this.destination = {};
+    this.state = 'running';
+  }
+  createOscillator() {
+    const tone = { frequency: null, start: null, stop: null };
+    scheduledTones.push(tone);
+    return {
+      type: 'sine',
+      frequency: { setValueAtTime(value) { tone.frequency = value; } },
+      connect() {},
+      start(time) { tone.start = time; },
+      stop(time) { tone.stop = time; }
+    };
+  }
+  createGain() {
+    return {
+      gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+      connect() {}
+    };
+  }
+  resume() { this.state = 'running'; return Promise.resolve(); }
+  suspend() { this.state = 'suspended'; return Promise.resolve(); }
+}
+
 const fakeLocation = { hash: '#home', reload() {} };
 const fakeWindow = {
   document: fakeDocument,
   location: fakeLocation,
   isSecureContext: true,
+  AudioContext: FakeAudioContext,
   addEventListener(type, callback) {
     if (!windowListeners.has(type)) windowListeners.set(type, []);
     windowListeners.get(type).push(callback);
   },
   scrollTo() {},
-  setTimeout,
-  clearTimeout,
-  setInterval,
-  clearInterval,
+  setTimeout(callback, delay) {
+    const id = nextTimerId++;
+    scheduledTimeouts.set(id, { callback, delay });
+    return id;
+  },
+  clearTimeout(id) { scheduledTimeouts.delete(id); },
+  setInterval(callback, delay) {
+    const id = nextTimerId++;
+    scheduledIntervals.set(id, { callback, delay });
+    return id;
+  },
+  clearInterval(id) { scheduledIntervals.delete(id); },
   confirm() { return true; }
 };
 
@@ -185,9 +234,28 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
-vm.runInContext(fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8'), context, { filename: 'app.js' });
+const appSource = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+assert.match(appSource, /const BREATH_PREP_SECONDS = 2;/);
+assert.match(appSource, /const BREATH_ASSESS_SECONDS = 10;/);
+assert.match(appSource, /scheduleBreathCues/);
+vm.runInContext(appSource, context, { filename: 'app.js' });
 
 assert.match(elements.get('quickActions').innerHTML, /Brak oddechu \/ RKO/);
+assert.equal(elements.get('breathTimerValue').textContent, '12 sekund łącznie');
+assert.match(elements.get('breathTimerStatus').textContent, /10 sekund oceny/);
+elements.get('breathTimerButton').dispatch('click');
+assert.equal(elements.get('breathTimerValue').textContent, 'Przygotowanie: 2 s');
+assert.equal(elements.get('breathTimerButton').textContent, 'Zatrzymaj i wyzeruj');
+assert.equal(scheduledTones.length, 12);
+assert.equal(scheduledTones[0].frequency, 920);
+assert.equal(scheduledTones[0].start, 102);
+assert.equal(scheduledTones.at(-1).frequency, 520);
+assert.equal(scheduledTones.at(-1).start, 112);
+assert.equal([...scheduledIntervals.values()].some((timer) => timer.delay === 100), true);
+elements.get('breathTimerButton').dispatch('click');
+assert.equal(elements.get('breathTimerValue').textContent, '12 sekund łącznie');
+assert.equal(elements.get('breathTimerButton').textContent, 'Rozpocznij ocenę');
+assert.equal(scheduledIntervals.size, 0);
 assert.equal((elements.get('procedureList').innerHTML.match(/data-procedure=/g) || []).length, 10);
 assert.equal(elements.get('aedCount').textContent, 3);
 assert.match(elements.get('resourceList').innerHTML, /AED — wejście główne/);
@@ -228,4 +296,4 @@ assert.ok(storage.has('ratownik_plk_v2_state'));
 elements.get('resourceTabs').dispatch('click', resourceTabs[1]);
 assert.match(elements.get('resourceList').innerHTML, /Apteczka — portiernia/);
 
-console.log('Test DOM: OK (start, wyszukiwarka, procedura krokowa, nawigacja, raport, motyw, zasoby)');
+console.log('Test DOM: OK (start, timer dźwiękowy 2+10 s, metronom, procedura krokowa, nawigacja, raport, motyw, zasoby)');

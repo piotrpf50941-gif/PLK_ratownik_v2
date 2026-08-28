@@ -1043,18 +1043,32 @@ strong {
   line-height: 1.4;
 }
 
-.tool-card.running {
+.metronome-card.running {
   border-color: #e5a0a7;
   box-shadow: 0 0 0 4px rgba(201, 40, 54, 0.08);
 }
 
-.tool-card.running .tool-icon {
+.timer-card.running {
+  border-color: #8eb9dc;
+  box-shadow: 0 0 0 4px rgba(35, 104, 150, 0.09);
+}
+
+.metronome-card.running .tool-icon {
   animation: heartbeat 545ms ease-in-out infinite;
+}
+
+.timer-card.running .tool-icon {
+  animation: countdown-pulse 1s ease-in-out infinite;
 }
 
 @keyframes heartbeat {
   0%, 100% { transform: scale(0.92); }
   45% { transform: scale(1.08); }
+}
+
+@keyframes countdown-pulse {
+  0%, 100% { transform: scale(0.96); }
+  50% { transform: scale(1.04); }
 }
 
 .settings-card,

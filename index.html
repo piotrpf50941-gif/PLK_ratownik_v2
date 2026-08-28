@@ -56,6 +56,35 @@
         </div>
       </article>
 
+      <section class="section-block emergency-tools-section" aria-labelledby="emergencyToolsTitle">
+        <div class="section-heading compact">
+          <div>
+            <span class="section-kicker">NARZĘDZIA NATYCHMIASTOWE</span>
+            <h2 id="emergencyToolsTitle">RKO i ocena oddechu</h2>
+          </div>
+        </div>
+        <div class="tool-grid" aria-label="Narzędzia ratownika dostępne na ekranie startowym">
+          <article class="tool-card metronome-card">
+            <div class="tool-icon" aria-hidden="true">♥</div>
+            <div>
+              <span class="section-kicker">RKO</span>
+              <h2>Metronom 110/min</h2>
+              <p>Pomaga utrzymać rytm uciśnięć klatki piersiowej.</p>
+            </div>
+            <button id="metronomeButton" class="button primary" type="button">Uruchom metronom</button>
+          </article>
+          <article class="tool-card timer-card">
+            <div class="tool-icon" aria-hidden="true">2+10</div>
+            <div>
+              <span class="section-kicker">OCENA ODDECHU</span>
+              <h2 id="breathTimerValue">12 sekund łącznie</h2>
+              <p id="breathTimerStatus" aria-live="polite">2 sekundy na przygotowanie, potem 10 sekund oceny z sygnałem startu, każdej sekundy i końca.</p>
+            </div>
+            <button id="breathTimerButton" class="button secondary" type="button" aria-describedby="breathTimerStatus">Rozpocznij ocenę</button>
+          </article>
+        </div>
+      </section>
+
       <section class="section-block" aria-labelledby="quickTitle">
         <div class="section-heading">
           <div>
@@ -84,8 +113,8 @@
         </div>
         <ol class="sequence-list">
           <li><span>1</span><div><strong>Zabezpiecz miejsce</strong><small>Nie podchodź, dopóki nie jest bezpiecznie.</small></div></li>
-          <li><span>2</span><div><strong>Oceń reakcję i oddech</strong><small>Oddech sprawdzaj nie dłużej niż 10 sekund.</small></div></li>
-          <li><span>3</span><div><strong>Wezwij pomoc i działaj</strong><small>112, RKO, AED lub tamowanie krwotoku.</small></div></li>
+          <li><span>2</span><div><strong>Sprawdź reakcję i dzwoń 112</strong><small>Przy braku reakcji uruchom połączenie i włącz głośnik.</small></div></li>
+          <li><span>3</span><div><strong>Oceń oddech i działaj</strong><small>Oddech oceniaj nie dłużej niż 10 sekund; rozpocznij RKO i użyj AED, jeśli nie jest prawidłowy.</small></div></li>
         </ol>
       </section>
 
@@ -145,31 +174,10 @@
 
     <section id="screen-tools" class="screen" aria-labelledby="toolsTitle" hidden>
       <header class="screen-heading">
-        <span class="section-kicker">NARZĘDZIA I USTAWIENIA</span>
+        <span class="section-kicker">USTAWIENIA I DANE</span>
         <h1 id="toolsTitle">Więcej</h1>
-        <p>Najważniejsze narzędzia są osobno, żeby nie przeciążać ekranu alarmowego.</p>
+        <p>Dostosuj czytelność aplikacji i zarządzaj zapisanymi zasobami.</p>
       </header>
-
-      <section class="tool-grid" aria-label="Narzędzia ratownika">
-        <article class="tool-card metronome-card">
-          <div class="tool-icon" aria-hidden="true">♥</div>
-          <div>
-            <span class="section-kicker">RKO</span>
-            <h2>Metronom 110/min</h2>
-            <p>Pomaga utrzymać rytm uciśnięć klatki piersiowej.</p>
-          </div>
-          <button id="metronomeButton" class="button primary" type="button">Uruchom metronom</button>
-        </article>
-        <article class="tool-card timer-card">
-          <div class="tool-icon" aria-hidden="true">10</div>
-          <div>
-            <span class="section-kicker">OCENA ODDECHU</span>
-            <h2 id="breathTimerValue">10 sekund</h2>
-            <p>Odliczanie maksymalnego czasu oceny oddechu.</p>
-          </div>
-          <button id="breathTimerButton" class="button secondary" type="button">Rozpocznij odliczanie</button>
-        </article>
-      </section>
 
       <section class="settings-card" aria-labelledby="displayTitle">
         <div class="settings-title"><span aria-hidden="true">Aa</span><div><h2 id="displayTitle">Czytelność</h2><p>Dostosuj aplikację do warunków pracy.</p></div></div>
