@@ -314,7 +314,13 @@ drop policy if exists organizations_update on public.organizations;
 create policy organizations_update on public.organizations
 for update to authenticated
 using (private.can_manage_organization(id))
-with check (private.can_manage_organization(id));
+with check (
+  private.can_manage_organization(id)
+  and (
+    (parent_id is null and private.is_system_admin())
+    or private.can_manage_organization(parent_id)
+  )
+);
 
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
@@ -338,18 +344,42 @@ using (
 drop policy if exists memberships_insert on public.memberships;
 create policy memberships_insert on public.memberships
 for insert to authenticated
-with check (private.can_manage_organization(organization_id));
+with check (
+  private.can_manage_organization(organization_id)
+  and (
+    private.is_system_admin()
+    or role in ('employee', 'responder')
+  )
+);
 
 drop policy if exists memberships_update on public.memberships;
 create policy memberships_update on public.memberships
 for update to authenticated
-using (private.can_manage_organization(organization_id))
-with check (private.can_manage_organization(organization_id));
+using (
+  private.can_manage_organization(organization_id)
+  and (
+    private.is_system_admin()
+    or role in ('employee', 'responder')
+  )
+)
+with check (
+  private.can_manage_organization(organization_id)
+  and (
+    private.is_system_admin()
+    or role in ('employee', 'responder')
+  )
+);
 
 drop policy if exists memberships_delete on public.memberships;
 create policy memberships_delete on public.memberships
 for delete to authenticated
-using (private.can_manage_organization(organization_id));
+using (
+  private.can_manage_organization(organization_id)
+  and (
+    private.is_system_admin()
+    or role in ('employee', 'responder')
+  )
+);
 
 drop policy if exists responders_select on public.responder_profiles;
 create policy responders_select on public.responder_profiles
@@ -532,7 +562,137 @@ begin
 end;
 $$;
 
+create or replace function public.register_invited_responder(
+  invited_user_id uuid,
+  target_organization_id uuid,
+  target_display_name text,
+  target_phone_e164 text,
+  target_competencies text[],
+  approving_user_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  new_membership_id uuid;
+begin
+  if invited_user_id is null or approving_user_id is null then
+    raise exception 'missing user id';
+  end if;
+  if not exists (
+    select 1 from public.organizations
+    where id = target_organization_id and active
+  ) then
+    raise exception 'organization not found';
+  end if;
+  if char_length(trim(target_display_name)) not between 2 and 120 then
+    raise exception 'invalid display name';
+  end if;
+  if target_phone_e164 is not null and target_phone_e164 !~ '^\+[1-9][0-9]{7,14}
+revoke all on function public.upsert_responder_contact(uuid, text, boolean) from public, anon, authenticated;
+grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
+grant execute on function public.upsert_responder_contact(uuid, text, boolean) to service_role;
+grant execute on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) to service_role;
+
+commit;
+
+-- Pierwsze uruchomienie:
+-- 1. Utwórz konto właściciela w Supabase Auth.
+-- 2. W SQL Editor dodaj profil, organizację główną i członkostwo system_admin.
+-- 3. Nie używaj user_metadata jako źródła uprawnień.
+-- 4. Po wdrożeniu uruchom Security Advisor i sprawdź wszystkie ostrzeżenia.
+ then
+    raise exception 'invalid phone format';
+  end if;
+
+  insert into public.profiles (user_id, display_name, active)
+  values (invited_user_id, trim(target_display_name), true)
+  on conflict (user_id) do update
+  set display_name = excluded.display_name,
+      active = true,
+      updated_at = now();
+
+  insert into public.memberships (
+    user_id,
+    organization_id,
+    role,
+    active,
+    approved_by,
+    approved_at
+  )
+  values (
+    invited_user_id,
+    target_organization_id,
+    'responder',
+    true,
+    approving_user_id,
+    now()
+  )
+  on conflict (user_id, organization_id, role) do update
+  set active = true,
+      approved_by = excluded.approved_by,
+      approved_at = excluded.approved_at,
+      updated_at = now()
+  returning id into new_membership_id;
+
+  insert into public.responder_profiles (
+    membership_id,
+    available,
+    competencies,
+    last_confirmed_at
+  )
+  values (
+    new_membership_id,
+    true,
+    coalesce(target_competencies, array[]::text[]),
+    now()
+  )
+  on conflict (membership_id) do update
+  set available = true,
+      competencies = excluded.competencies,
+      last_confirmed_at = now(),
+      updated_at = now();
+
+  insert into private.responder_contacts (
+    membership_id,
+    phone_e164,
+    sms_enabled
+  )
+  values (
+    new_membership_id,
+    target_phone_e164,
+    target_phone_e164 is not null
+  )
+  on conflict (membership_id) do update
+  set phone_e164 = excluded.phone_e164,
+      sms_enabled = excluded.sms_enabled,
+      updated_at = now();
+
+  insert into public.audit_log (
+    actor_id,
+    organization_id,
+    action,
+    entity_type,
+    entity_id,
+    details
+  )
+  values (
+    approving_user_id,
+    target_organization_id,
+    'responder_invited',
+    'membership',
+    new_membership_id::text,
+    jsonb_build_object('role', 'responder')
+  );
+
+  return new_membership_id;
+end;
+$;
+
 revoke all on function public.get_alert_recipients_for_dispatch(uuid) from public, anon, authenticated;
+revoke all on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) from public, anon, authenticated;
 revoke all on function public.upsert_responder_contact(uuid, text, boolean) from public, anon, authenticated;
 grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
 grant execute on function public.upsert_responder_contact(uuid, text, boolean) to service_role;
