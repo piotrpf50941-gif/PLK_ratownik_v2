@@ -7,6 +7,7 @@
 window.RATOWNIK_INTERNAL_CONFIG = Object.freeze({
   supabaseUrl: '',
   supabasePublishableKey: '',
+  vapidPublicKey: '',
   environment: 'test',
   notificationMode: 'simulation'
 });
