@@ -1,6 +1,6 @@
 # Ratownik PLK v2
 
-Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.5.0**.
+Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.6.0**.
 
 ## Najważniejsza zmiana
 
@@ -33,8 +33,11 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 - tryb ciemny i większy tekst,
 - instalacja jako PWA i działanie offline,
 - spójny zestaw nowych grafik dopasowanych do każdej procedury.
+- osobny panel wewnętrzny z logowaniem, rolami, jednostkami, ratownikami i dashboardem administracyjnym,
+- bezpieczny alarm ratowników z potwierdzeniem, GPS, idempotencją i audytem; domyślnie działa w trybie symulacji bez wysyłania wiadomości,
+- schemat Supabase z RLS, prywatnymi kontaktami oraz Edge Functions dla zaproszeń i adapterów PUSH/SMS.
 
-Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Profil, ratownicy, alarmowanie, kontrole i panel administracyjny wymagają osobnej, uwierzytelnionej części. Kierunek techniczny opisuje [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
+Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Przygotowany moduł `internal/` pobiera dane dopiero po uwierzytelnieniu i sprawdzeniu RLS. Do czasu podłączenia osobnego projektu Supabase pokazuje bezpieczny ekran konfiguracji; żadna lista pracowników ani sekret nie trafia do GitHub Pages. Szczegóły zawiera [instrukcja panelu](internal/README.md) i [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
 
 ## Uruchomienie lokalne
 
