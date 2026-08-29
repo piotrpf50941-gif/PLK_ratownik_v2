@@ -46,6 +46,62 @@ self.addEventListener('message', function (event) {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+function cleanNotificationText(value, fallback, maximum) {
+  const cleaned = String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return cleaned.slice(0, maximum || 180) || fallback;
+}
+
+function safeNotificationUrl(value) {
+  const fallback = new URL('./internal/', self.registration.scope).href;
+  try {
+    const candidate = new URL(value || fallback, fallback);
+    const internalPath = new URL('./internal/', self.registration.scope).pathname;
+    return candidate.origin === self.location.origin && candidate.pathname.startsWith(internalPath)
+      ? candidate.href
+      : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+self.addEventListener('push', function (event) {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = {};
+  }
+
+  const title = cleanNotificationText(payload.title, 'Ratownik PLK — potrzebna pomoc', 90);
+  const options = {
+    body: cleanNotificationText(payload.body, 'Otwórz panel, aby zobaczyć szczegóły alarmu.', 220),
+    icon: './assets/icons/icon-192.png',
+    badge: './assets/icons/icon-192.png',
+    tag: cleanNotificationText(payload.tag, 'ratownik-plk-alert', 120),
+    renotify: true,
+    requireInteraction: true,
+    data: {
+      openUrl: safeNotificationUrl(payload.openUrl)
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  const targetUrl = safeNotificationUrl(event.notification.data && event.notification.data.openUrl);
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
+      const existing = windows.find(function (client) {
+        return client.url === targetUrl || client.url.startsWith(targetUrl);
+      });
+      if (existing) return existing.focus();
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener('fetch', function (event) {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
