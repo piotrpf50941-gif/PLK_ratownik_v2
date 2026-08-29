@@ -1,0 +1,353 @@
+import {
+  adminClient,
+  assertPost,
+  cleanText,
+  handleOptions,
+  json,
+  readJson,
+  requireUser,
+  ResponseError,
+  safeError,
+  validUuid
+} from '../_shared/common.ts'
+
+const INCIDENT_TYPES = new Set([
+  'unconscious',
+  'cardiac_arrest',
+  'trauma',
+  'bleeding',
+  'other'
+])
+
+type Recipient = {
+  membership_id: string
+  user_id: string
+  phone_e164: string | null
+  sms_enabled: boolean
+  push_subscriptions: Array<Record<string, unknown>>
+}
+
+type Attempt = {
+  incident_id: string
+  recipient_id: string
+  channel: 'push' | 'sms'
+  status: 'simulated' | 'sent' | 'failed' | 'skipped'
+  provider_message_id?: string | null
+  destination_masked: string
+  error_code?: string | null
+}
+
+function numberInRange(value: unknown, minimum: number, maximum: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (value < minimum || value > maximum) return null
+  return value
+}
+
+function maskPhone(phone: string) {
+  return phone.length > 4 ? '***' + phone.slice(-4) : '***'
+}
+
+function mapUrl(latitude: number | null, longitude: number | null) {
+  if (latitude === null || longitude === null) return null
+  return 'https://www.google.com/maps?q=' + latitude + ',' + longitude
+}
+
+async function sendWebhook(url: string, token: string, body: unknown) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000)
+  })
+  if (!response.ok) throw new Error('provider_http_' + response.status)
+  let payload: Record<string, unknown> = {}
+  try {
+    payload = await response.json()
+  } catch {
+    payload = {}
+  }
+  return typeof payload.messageId === 'string' ? payload.messageId : null
+}
+
+Deno.serve(async (req: Request) => {
+  const preflight = handleOptions(req)
+  if (preflight) return preflight
+
+  try {
+    assertPost(req)
+    const { user } = await requireUser(req)
+    const body = await readJson(req)
+
+    if (!validUuid(body.organizationId) || !validUuid(body.idempotencyKey)) {
+      throw new ResponseError(400, 'Nieprawidłowy identyfikator jednostki lub alarmu.')
+    }
+
+    const incidentType = cleanText(body.incidentType, 40, true)
+    if (!INCIDENT_TYPES.has(incidentType)) {
+      throw new ResponseError(400, 'Nieobsługiwany rodzaj zdarzenia.')
+    }
+
+    const placeDescription = cleanText(body.placeDescription, 240, true)
+    const note = cleanText(body.note, 500, false) || null
+    const rawLocation = body.location && typeof body.location === 'object' ? body.location : {}
+    const latitude = numberInRange(rawLocation.latitude, -90, 90)
+    const longitude = numberInRange(rawLocation.longitude, -180, 180)
+    const accuracy = numberInRange(rawLocation.accuracyMeters, 0, 100000)
+    const admin = adminClient()
+
+    const { data: memberships, error: membershipError } = await admin
+      .from('memberships')
+      .select('id,role')
+      .eq('user_id', user.id)
+      .eq('organization_id', body.organizationId)
+      .eq('active', true)
+
+    if (membershipError) throw membershipError
+    if (!memberships || memberships.length === 0) {
+      throw new ResponseError(403, 'Nie masz aktywnego przypisania do tej jednostki.')
+    }
+
+    const { data: duplicate, error: duplicateError } = await admin
+      .from('incidents')
+      .select('id,status,notification_mode')
+      .eq('created_by', user.id)
+      .eq('idempotency_key', body.idempotencyKey)
+      .maybeSingle()
+
+    if (duplicateError) throw duplicateError
+    if (duplicate) {
+      return json({
+        incidentId: duplicate.id,
+        status: duplicate.status,
+        mode: duplicate.notification_mode,
+        duplicate: true,
+        recipientCount: 0
+      })
+    }
+
+    const recentCutoff = new Date(Date.now() - 30000).toISOString()
+    const { data: recent, error: recentError } = await admin
+      .from('incidents')
+      .select('id')
+      .eq('created_by', user.id)
+      .gte('created_at', recentCutoff)
+      .limit(1)
+
+    if (recentError) throw recentError
+    if (recent && recent.length) {
+      throw new ResponseError(429, 'Odczekaj 30 sekund przed utworzeniem kolejnego alarmu.', 'rate_limited')
+    }
+
+    const mode = Deno.env.get('NOTIFICATION_MODE') === 'production'
+      ? 'production'
+      : 'simulation'
+
+    const { data: organization, error: organizationError } = await admin
+      .from('organizations')
+      .select('id,name,code')
+      .eq('id', body.organizationId)
+      .eq('active', true)
+      .single()
+
+    if (organizationError || !organization) {
+      throw new ResponseError(404, 'Jednostka nie istnieje albo jest nieaktywna.')
+    }
+
+    const { data: incident, error: incidentError } = await admin
+      .from('incidents')
+      .insert({
+        organization_id: body.organizationId,
+        created_by: user.id,
+        idempotency_key: body.idempotencyKey,
+        incident_type: incidentType,
+        place_description: placeDescription,
+        note,
+        latitude,
+        longitude,
+        accuracy_m: accuracy === null ? null : Math.round(accuracy),
+        status: 'dispatching',
+        notification_mode: mode
+      })
+      .select('id,created_at')
+      .single()
+
+    if (incidentError || !incident) throw incidentError || new Error('incident_not_created')
+
+    const { data: recipientData, error: recipientError } = await admin
+      .rpc('get_alert_recipients_for_dispatch', {
+        target_organization_id: body.organizationId
+      })
+
+    if (recipientError) throw recipientError
+
+    const recipients = ((recipientData || []) as Recipient[]).filter((recipient) => {
+      const hasSms = Boolean(recipient.sms_enabled && recipient.phone_e164)
+      const hasPush = Array.isArray(recipient.push_subscriptions) && recipient.push_subscriptions.length > 0
+      return hasSms || hasPush
+    })
+
+    if (recipients.length === 0) {
+      await admin.from('incidents').update({ status: 'failed' }).eq('id', incident.id)
+      await admin.from('audit_log').insert({
+        actor_id: user.id,
+        organization_id: body.organizationId,
+        action: 'alarm_no_recipients',
+        entity_type: 'incident',
+        entity_id: incident.id,
+        details: { mode }
+      })
+      throw new ResponseError(409, 'Brak dostępnych ratowników z aktywnym kanałem PUSH lub SMS.', 'no_recipients')
+    }
+
+    const recipientRows = recipients.map((recipient) => {
+      const channels: string[] = []
+      if (Array.isArray(recipient.push_subscriptions) && recipient.push_subscriptions.length) channels.push('push')
+      if (recipient.sms_enabled && recipient.phone_e164) channels.push('sms')
+      return {
+        incident_id: incident.id,
+        membership_id: recipient.membership_id,
+        channels
+      }
+    })
+
+    const { data: storedRecipients, error: storedRecipientError } = await admin
+      .from('alert_recipients')
+      .insert(recipientRows)
+      .select('id,membership_id')
+
+    if (storedRecipientError || !storedRecipients) {
+      throw storedRecipientError || new Error('recipients_not_saved')
+    }
+
+    const recipientIdByMembership = new Map(
+      storedRecipients.map((item) => [item.membership_id, item.id])
+    )
+    const attempts: Attempt[] = []
+    const smsUrl = Deno.env.get('SMS_WEBHOOK_URL') || ''
+    const smsToken = Deno.env.get('SMS_WEBHOOK_TOKEN') || ''
+    const pushUrl = Deno.env.get('PUSH_WEBHOOK_URL') || ''
+    const pushToken = Deno.env.get('PUSH_WEBHOOK_TOKEN') || ''
+    const locationUrl = mapUrl(latitude, longitude)
+    const message = {
+      title: '🚨 POTRZEBNA POMOC',
+      organization: (organization.code ? organization.code + ' — ' : '') + organization.name,
+      incidentType,
+      place: placeDescription,
+      locationUrl,
+      incidentId: incident.id,
+      createdAt: incident.created_at
+    }
+
+    for (const recipient of recipients) {
+      const recipientId = recipientIdByMembership.get(recipient.membership_id)
+      if (!recipientId) continue
+
+      if (Array.isArray(recipient.push_subscriptions) && recipient.push_subscriptions.length) {
+        const attempt: Attempt = {
+          incident_id: incident.id,
+          recipient_id: recipientId,
+          channel: 'push',
+          status: mode === 'simulation' ? 'simulated' : 'failed',
+          destination_masked: 'push:' + recipient.push_subscriptions.length
+        }
+        if (mode === 'production') {
+          if (!pushUrl || !pushToken) {
+            attempt.status = 'skipped'
+            attempt.error_code = 'push_provider_not_configured'
+          } else {
+            try {
+              attempt.provider_message_id = await sendWebhook(pushUrl, pushToken, {
+                subscriptions: recipient.push_subscriptions,
+                message
+              })
+              attempt.status = 'sent'
+            } catch (error) {
+              attempt.status = 'failed'
+              attempt.error_code = error instanceof Error ? error.message.slice(0, 100) : 'push_failed'
+            }
+          }
+        }
+        attempts.push(attempt)
+      }
+
+      if (recipient.sms_enabled && recipient.phone_e164) {
+        const attempt: Attempt = {
+          incident_id: incident.id,
+          recipient_id: recipientId,
+          channel: 'sms',
+          status: mode === 'simulation' ? 'simulated' : 'failed',
+          destination_masked: maskPhone(recipient.phone_e164)
+        }
+        if (mode === 'production') {
+          if (!smsUrl || !smsToken) {
+            attempt.status = 'skipped'
+            attempt.error_code = 'sms_provider_not_configured'
+          } else {
+            try {
+              attempt.provider_message_id = await sendWebhook(smsUrl, smsToken, {
+                to: recipient.phone_e164,
+                message
+              })
+              attempt.status = 'sent'
+            } catch (error) {
+              attempt.status = 'failed'
+              attempt.error_code = error instanceof Error ? error.message.slice(0, 100) : 'sms_failed'
+            }
+          }
+        }
+        attempts.push(attempt)
+      }
+    }
+
+    if (attempts.length) {
+      const { error: attemptError } = await admin.from('delivery_attempts').insert(attempts)
+      if (attemptError) throw attemptError
+    }
+
+    const sentCount = attempts.filter((attempt) => attempt.status === 'sent').length
+    const failedCount = attempts.filter((attempt) => attempt.status === 'failed' || attempt.status === 'skipped').length
+    const finalStatus = mode === 'simulation'
+      ? 'simulated'
+      : sentCount === 0
+        ? 'failed'
+        : failedCount > 0
+          ? 'partial'
+          : 'sent'
+
+    const { error: statusError } = await admin
+      .from('incidents')
+      .update({ status: finalStatus })
+      .eq('id', incident.id)
+
+    if (statusError) throw statusError
+
+    await admin.from('audit_log').insert({
+      actor_id: user.id,
+      organization_id: body.organizationId,
+      action: 'alarm_dispatched',
+      entity_type: 'incident',
+      entity_id: incident.id,
+      details: {
+        mode,
+        status: finalStatus,
+        recipient_count: recipients.length,
+        attempt_count: attempts.length,
+        failed_count: failedCount
+      }
+    })
+
+    return json({
+      incidentId: incident.id,
+      status: finalStatus,
+      mode,
+      duplicate: false,
+      recipientCount: recipients.length,
+      attemptCount: attempts.length
+    })
+  } catch (error) {
+    return safeError(error)
+  }
+})
