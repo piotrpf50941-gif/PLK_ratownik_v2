@@ -3,8 +3,9 @@
 
   const DATA = window.RATOWNIK_DATA;
   const STORAGE_KEY = 'ratownik_plk_v2_state';
+  const LAST_ONLINE_KEY = 'ratownik_plk_v2_last_online';
   const VALID_SCREENS = ['home', 'procedures', 'resources', 'tools'];
-  const VALID_ENTITIES = ['aeds', 'kits', 'rescuers'];
+  const VALID_ENTITIES = ['aeds', 'kits'];
   const BREATH_PREP_SECONDS = 2;
   const BREATH_ASSESS_SECONDS = 10;
   const BREATH_TOTAL_SECONDS = BREATH_PREP_SECONDS + BREATH_ASSESS_SECONDS;
@@ -30,15 +31,19 @@
   let audioContext = null;
   let metronomeScheduler = null;
   let nextMetronomeBeat = 0;
+  let procedureTimer = null;
+  let procedureTimerEndsAt = 0;
+  let procedureTimerDuration = 0;
+  let procedureTimerRemaining = 0;
+  let procedureTimerLabel = '';
+  let procedureTimerComplete = false;
+  let guideStep = 'safety';
+  const timeMarks = new Map();
   let serviceWorkerRegistration = null;
   let reloadingForUpdate = false;
 
   function cleanText(value, maxLength) {
     return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, maxLength || 500);
-  }
-
-  function cleanPhone(value) {
-    return String(value == null ? '' : value).replace(/[^0-9+]/g, '').slice(0, 20);
   }
 
   function esc(value) {
@@ -75,19 +80,6 @@
     };
   }
 
-  function normalizeRescuer(item, index) {
-    const raw = item && typeof item === 'object' ? item : {};
-    return {
-      id: cleanText(raw.id, 80) || 'rescuer-' + Date.now() + '-' + index,
-      name: cleanText(raw.name, 120) || 'Ratownik',
-      phone: cleanPhone(raw.phone),
-      zone: cleanText(raw.zone, 160),
-      location: cleanText(raw.location, 180),
-      skills: cleanText(raw.skills, 240),
-      active: raw.active !== false
-    };
-  }
-
   function normalizeState(value) {
     const defaults = clone(DATA.defaultState);
     const raw = value && typeof value === 'object' ? value : {};
@@ -101,7 +93,6 @@
     return {
       aeds: (Array.isArray(raw.aeds) ? raw.aeds : defaults.aeds).slice(0, 1000).map(normalizeAed),
       kits: (Array.isArray(raw.kits) ? raw.kits : defaults.kits).slice(0, 1000).map(normalizeKit),
-      rescuers: (Array.isArray(raw.rescuers) ? raw.rescuers : defaults.rescuers).slice(0, 1000).map(normalizeRescuer),
       location: location && location.lat !== null && location.lon !== null ? location : null,
       preferences: {
         darkMode: Boolean(raw.preferences && raw.preferences.darkMode),
@@ -185,6 +176,60 @@
     return DATA.procedures.find(function (procedure) { return procedure.id === id; }) || null;
   }
 
+  function formatDuration(totalSeconds) {
+    const seconds = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+    const minutes = Math.floor(seconds / 60);
+    return String(minutes).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+  }
+
+  function renderStepTools(step) {
+    if (!Array.isArray(step.tools) || !step.tools.length) return '';
+    const markKey = currentProcedure.id + ':' + currentStep;
+    return '<div class="procedure-tools" aria-label="Narzędzia dla tego kroku">' + step.tools.map(function (rawTool) {
+      const tool = typeof rawTool === 'string' ? { type: rawTool } : rawTool;
+      if (!tool || !tool.type) return '';
+      if (tool.type === 'call') {
+        return '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>';
+      }
+      if (tool.type === 'breath') {
+        return [
+          '<section class="procedure-tool-panel breath" data-breath-panel>',
+          '<div><span class="procedure-tool-value" data-breath-value>12 sekund łącznie</span><small data-breath-status>2 sekundy przygotowania + 10 sekund oceny.</small></div>',
+          '<button class="procedure-tool-action" type="button" data-procedure-tool="breath">▶ Uruchom ocenę oddechu 2+10 s</button>',
+          '</section>'
+        ].join('');
+      }
+      if (tool.type === 'metronome') {
+        return [
+          '<section class="procedure-tool-panel metronome" data-metronome-panel>',
+          '<div><span class="procedure-tool-value">Metronom RKO 110/min</span><small data-metronome-status>Gotowy do uruchomienia.</small></div>',
+          '<button class="procedure-tool-action" type="button" data-procedure-tool="metronome">♥ Uruchom metronom RKO</button>',
+          '</section>'
+        ].join('');
+      }
+      if (tool.type === 'timer') {
+        const seconds = Math.max(1, Math.min(7200, Number(tool.seconds) || 60));
+        const label = cleanText(tool.label, 100) || 'Pomiar czasu';
+        return [
+          '<section class="procedure-tool-panel timer" data-procedure-timer-panel data-timer-seconds="', seconds, '" data-timer-label="', esc(label), '">',
+          '<div><span class="procedure-tool-value" data-procedure-timer-value>', esc(label), ' · ', formatDuration(seconds), '</span><small data-procedure-timer-status>Timer jest gotowy.</small></div>',
+          '<button class="procedure-tool-action" type="button" data-procedure-tool="timer" data-seconds="', seconds, '" data-label="', esc(label), '">⏱ Uruchom timer</button>',
+          '</section>'
+        ].join('');
+      }
+      if (tool.type === 'time-mark') {
+        const label = cleanText(tool.label, 100) || 'Zapisz bieżącą godzinę';
+        return [
+          '<section class="procedure-tool-panel time-mark" data-time-mark-panel="', esc(markKey), '">',
+          '<div><span class="procedure-tool-value">', esc(label), '</span><small data-time-mark-status>Godzina nie została jeszcze zapisana.</small></div>',
+          '<button class="procedure-tool-action" type="button" data-procedure-tool="time-mark" data-mark-key="', esc(markKey), '">⏱ Zapisz godzinę</button>',
+          '</section>'
+        ].join('');
+      }
+      return '';
+    }).join('') + '</div>';
+  }
+
   function renderQuickActions() {
     const container = $('quickActions');
     container.innerHTML = DATA.quickProcedureIds.map(function (id) {
@@ -235,11 +280,12 @@
     }).join('');
   }
 
-  function openProcedure(id) {
+  function openProcedure(id, startStep) {
     const procedure = getProcedure(id);
     if (!procedure) return;
     currentProcedure = procedure;
-    currentStep = 0;
+    const requestedStep = Number.parseInt(startStep, 10);
+    currentStep = Number.isInteger(requestedStep) ? Math.max(0, Math.min(procedure.steps.length - 1, requestedStep)) : 0;
     $('procedureCategory').textContent = procedure.category;
     renderProcedureStep();
     closeDialog('emergencyDialog');
@@ -251,7 +297,7 @@
     const step = currentProcedure.steps[currentStep];
     const progress = Math.round(((currentStep + 1) / currentProcedure.steps.length) * 100);
     const source = currentStep === currentProcedure.steps.length - 1 ? [
-      '<p class="procedure-summary">Źródło odniesienia: <a href="', esc(currentProcedure.sourceUrl), '" target="_blank" rel="noopener noreferrer">', esc(currentProcedure.sourceLabel), '</a>. Procedurę kolejową należy uzgodnić z obowiązującymi instrukcjami zakładowymi.</p>'
+      '<p class="procedure-summary">Źródło odniesienia: <a href="', esc(currentProcedure.sourceUrl), '" target="_blank" rel="noopener noreferrer" data-online-required>', esc(currentProcedure.sourceLabel), '</a>. Procedurę kolejową należy uzgodnić z obowiązującymi instrukcjami zakładowymi.</p>'
     ].join('') : '';
 
     $('procedureContent').innerHTML = [
@@ -263,7 +309,8 @@
       '<article class="step-card">',
       '<span class="step-number"><i>', currentStep + 1, '</i> Krok ', currentStep + 1, ' z ', currentProcedure.steps.length, '</span>',
       '<h3>', esc(step.title), '</h3>',
-      '<p>', esc(step.text), '</p>',
+      renderStepTools(step),
+      '<details class="step-details"><summary>Więcej informacji</summary><p>', esc(step.text), '</p></details>',
       step.warning ? '<div class="step-warning"><strong>!</strong><span>' + esc(step.warning) + '</span></div>' : '',
       '</article>',
       source
@@ -273,21 +320,103 @@
     $('stepProgressBar').style.width = progress + '%';
     $('previousStepButton').disabled = currentStep === 0;
     $('nextStepButton').textContent = currentStep === currentProcedure.steps.length - 1 ? 'Zakończ procedurę' : 'Następny krok';
+    syncToolDisplays();
     $('procedureContent').scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function renderEmergencyChoices() {
-    $('emergencyChoices').innerHTML = DATA.emergencyChoiceIds.map(function (id) {
-      const procedure = getProcedure(id);
-      if (!procedure) return '';
-      return [
-        '<button class="emergency-choice" type="button" data-procedure="', esc(procedure.id), '">',
-        '<span aria-hidden="true">', esc(procedure.icon), '</span>',
-        '<span><strong>', esc(procedure.shortTitle), '</strong><small>', esc(procedure.summary), '</small></span>',
-        '<span aria-hidden="true">›</span>',
-        '</button>'
+  function renderGuide(stepName) {
+    guideStep = stepName || 'safety';
+    let title = 'Co mam teraz zrobić?';
+    let prompt = 'Odpowiedz jednym dotknięciem. Aplikacja pokaże kolejną czynność.';
+    let content = '';
+
+    if (guideStep === 'safety') {
+      title = 'Czy miejsce jest bezpieczne?';
+      prompt = 'Najpierw oceń zagrożenia dla siebie i innych. Nie podchodź, jeśli nie jest bezpiecznie.';
+      content = [
+        '<div class="guide-alert"><strong>Sprawdź:</strong><span>ruch kolejowy i pojazdy, sieć trakcyjną i urządzenia elektryczne, pożar, substancje niebezpieczne oraz inne zagrożenia.</span></div>',
+        '<div class="guide-actions">',
+        '<button class="guide-answer safe" type="button" data-guide-action="safe">Tak — jest bezpiecznie</button>',
+        '<button class="guide-answer danger" type="button" data-guide-action="unsafe">Nie / nie mam pewności</button>',
+        '</div>'
       ].join('');
-    }).join('');
+    } else if (guideStep === 'unsafe') {
+      title = 'Nie podchodź';
+      prompt = 'Oddal się od zagrożenia, ostrzeż innych i wezwij właściwe służby. Nie ryzykuj własnego życia.';
+      content = [
+        '<div class="guide-alert danger"><strong>Zatrzymaj się</strong><span>Pomagaj dopiero po potwierdzeniu, że podejście jest bezpieczne.</span></div>',
+        '<button class="guide-answer" type="button" data-guide-action="restart">Sprawdź bezpieczeństwo ponownie</button>'
+      ].join('');
+    } else if (guideStep === 'response') {
+      title = 'Czy poszkodowany reaguje?';
+      prompt = 'Zwróć się głośno do poszkodowanego. Jeżeli możesz bezpiecznie podejść, sprawdź reakcję.';
+      content = [
+        '<div class="guide-actions">',
+        '<button class="guide-answer safe" type="button" data-guide-action="responds">Tak — reaguje</button>',
+        '<button class="guide-answer danger" type="button" data-guide-action="unresponsive">Nie reaguje</button>',
+        '</div>'
+      ].join('');
+    } else if (guideStep === 'breathing') {
+      title = 'Oceń oddech';
+      prompt = 'Udrożnij drogi oddechowe i sprawdzaj oddech nie dłużej niż 10 sekund. Uruchom sygnały bez zamykania tego ekranu.';
+      content = [
+        '<section class="procedure-tool-panel breath" data-breath-panel>',
+        '<div><span class="procedure-tool-value" data-breath-value>12 sekund łącznie</span><small data-breath-status>2 sekundy przygotowania + 10 sekund oceny.</small></div>',
+        '<button class="procedure-tool-action" type="button" data-procedure-tool="breath">▶ Uruchom ocenę oddechu 2+10 s</button>',
+        '</section>',
+        '<div class="guide-actions">',
+        '<button class="guide-answer safe" type="button" data-guide-action="breathing-normal">Oddycha prawidłowo</button>',
+        '<button class="guide-answer danger" type="button" data-guide-action="breathing-abnormal">Nie oddycha prawidłowo / mam wątpliwość</button>',
+        '</div>'
+      ].join('');
+    } else if (guideStep === 'recovery') {
+      title = 'Wezwij 112 i monitoruj oddech';
+      prompt = 'Osoba nieprzytomna, która oddycha prawidłowo, wymaga pilnej pomocy i stałej kontroli oddechu.';
+      content = [
+        '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>',
+        '<button class="guide-answer safe" type="button" data-procedure="pozycja-boczna" data-procedure-step="2">Przejdź do ułożenia i monitorowania</button>'
+      ].join('');
+    } else if (guideStep === 'rko') {
+      title = 'Wezwij 112 i rozpocznij RKO';
+      prompt = 'Włącz głośnik, poproś o AED i rozpocznij uciśnięcia. Metronom możesz uruchomić tutaj.';
+      content = [
+        '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>',
+        '<section class="procedure-tool-panel metronome" data-metronome-panel>',
+        '<div><span class="procedure-tool-value">Metronom RKO 110/min</span><small data-metronome-status>Gotowy do uruchomienia.</small></div>',
+        '<button class="procedure-tool-action" type="button" data-procedure-tool="metronome">♥ Uruchom metronom RKO</button>',
+        '</section>',
+        '<button class="guide-answer danger" type="button" data-procedure="rko-dorosly" data-procedure-step="4">Otwórz prowadzenie RKO i AED</button>'
+      ].join('');
+    } else {
+      title = 'Co się wydarzyło?';
+      prompt = 'Wybierz najlepiej pasującą sytuację. Każda procedura poprowadzi Cię krok po kroku.';
+      content = '<div class="emergency-choice-list">' + DATA.emergencyChoiceIds.map(function (id) {
+        const procedure = getProcedure(id);
+        if (!procedure) return '';
+        return [
+          '<button class="emergency-choice" type="button" data-procedure="', esc(procedure.id), '">',
+          '<span aria-hidden="true">', esc(procedure.icon), '</span>',
+          '<span><strong>', esc(procedure.shortTitle), '</strong><small>', esc(procedure.summary), '</small></span>',
+          '<span aria-hidden="true">›</span>',
+          '</button>'
+        ].join('');
+      }).join('') + '</div>';
+    }
+
+    $('guideTitle').textContent = title;
+    $('guidePrompt').textContent = prompt;
+    $('emergencyChoices').innerHTML = content;
+    syncToolDisplays();
+  }
+
+  function handleGuideAction(action) {
+    if (action === 'safe') renderGuide('response');
+    else if (action === 'unsafe') renderGuide('unsafe');
+    else if (action === 'restart') renderGuide('safety');
+    else if (action === 'responds') renderGuide('incident');
+    else if (action === 'unresponsive') renderGuide('breathing');
+    else if (action === 'breathing-normal') renderGuide('recovery');
+    else if (action === 'breathing-abnormal') renderGuide('rko');
   }
 
   function updateLocationSummary() {
@@ -345,10 +474,8 @@
   function renderResourceCounts() {
     $('aedCount').textContent = state.aeds.length;
     $('kitCount').textContent = state.kits.length;
-    $('rescuerCount').textContent = state.rescuers.length;
     $('dataAedCount').textContent = state.aeds.length;
     $('dataKitCount').textContent = state.kits.length;
-    $('dataRescuerCount').textContent = state.rescuers.length;
   }
 
   function renderResources() {
@@ -376,8 +503,6 @@
       $('resourceHint').textContent = state.location ? 'AED są posortowane według przybliżonej odległości w linii prostej.' : 'Włącz GPS, aby posortować AED według odległości.';
     } else if (selectedResource === 'kits') {
       $('resourceHint').textContent = 'Sprawdź lokalizację oraz wyposażenie apteczki przed zdarzeniem.';
-    } else {
-      $('resourceHint').textContent = 'Połączenie i SMS są uruchamiane w aplikacji telefonu.';
     }
 
     if (!items.length) {
@@ -387,8 +512,7 @@
 
     $('resourceList').innerHTML = items.map(function (item) {
       if (selectedResource === 'aeds') return renderAedCard(item);
-      if (selectedResource === 'kits') return renderKitCard(item);
-      return renderRescuerCard(item);
+      return renderKitCard(item);
     }).join('');
   }
 
@@ -402,7 +526,7 @@
       item.distance !== null && item.distance !== undefined ? '<small>Około ' + esc(formatDistance(item.distance)) + ' w linii prostej</small>' : '',
       '</div>',
       '<div class="resource-actions">',
-      hasCoordinates ? '<a class="resource-action" href="' + esc(mapUrl) + '" target="_blank" rel="noopener noreferrer" aria-label="Pokaż AED na mapie">⌖</a>' : '',
+      hasCoordinates ? '<a class="resource-action" href="' + esc(mapUrl) + '" target="_blank" rel="noopener noreferrer" data-online-required aria-label="Pokaż AED na mapie">⌖</a>' : '',
       '</div></article>'
     ].join('');
   }
@@ -414,20 +538,6 @@
       '<div class="resource-copy"><strong>', esc(item.name), '</strong><span>', esc(item.location || 'Brak opisu lokalizacji'), '</span><small>', esc(item.type), item.contents ? ' · ' + esc(item.contents) : '', '</small></div>',
       '<div class="resource-actions"></div>',
       '</article>'
-    ].join('');
-  }
-
-  function renderRescuerCard(item) {
-    const phone = cleanPhone(item.phone);
-    const message = encodeURIComponent('ALARM RATOWNICZY. Proszę o pilny kontakt i gotowość do pomocy.');
-    return [
-      '<article class="resource-card">',
-      '<span class="resource-icon rescuer" aria-hidden="true">●</span>',
-      '<div class="resource-copy"><strong>', esc(item.name), '</strong><span>', esc([item.zone, item.location].filter(Boolean).join(' · ')), '</span><small>', esc(item.skills || (item.active ? 'aktywny' : 'nieaktywny')), '</small></div>',
-      '<div class="resource-actions">',
-      phone ? '<a class="resource-action" href="tel:' + esc(phone) + '" aria-label="Zadzwoń do ' + esc(item.name) + '">☎</a>' : '',
-      phone ? '<a class="resource-action" href="sms:' + esc(phone) + '?body=' + message + '" aria-label="Wyślij SMS do ' + esc(item.name) + '">✉</a>' : '',
-      '</div></article>'
     ].join('');
   }
 
@@ -526,6 +636,23 @@
     scheduleTone(time, 720, 0.065, 0.18);
   }
 
+  function syncMetronomeDisplay() {
+    const running = Boolean(metronomeScheduler);
+    const homeButton = $('metronomeButton');
+    if (homeButton) {
+      homeButton.textContent = running ? 'Zatrzymaj metronom' : 'Uruchom metronom';
+      const homeCard = homeButton.closest('.tool-card');
+      if (homeCard) homeCard.classList.toggle('running', running);
+    }
+    all('[data-metronome-panel]').forEach(function (panel) { panel.classList.toggle('running', running); });
+    all('[data-procedure-tool="metronome"]').forEach(function (button) {
+      button.textContent = running ? '■ Zatrzymaj metronom RKO' : '♥ Uruchom metronom RKO';
+    });
+    all('[data-metronome-status]').forEach(function (status) {
+      status.textContent = running ? 'Metronom działa — rytm 110 uciśnięć/min.' : 'Gotowy do uruchomienia.';
+    });
+  }
+
   function metronomeLoop() {
     while (audioContext && nextMetronomeBeat < audioContext.currentTime + 0.12) {
       scheduleBeat(nextMetronomeBeat);
@@ -543,8 +670,7 @@
     nextMetronomeBeat = context.currentTime + 0.05;
     metronomeLoop();
     metronomeScheduler = window.setInterval(metronomeLoop, 25);
-    $('metronomeButton').textContent = 'Zatrzymaj metronom';
-    $('metronomeButton').closest('.tool-card').classList.add('running');
+    syncMetronomeDisplay();
     showToast('Metronom: 110 uciśnięć na minutę.');
   }
 
@@ -552,8 +678,7 @@
     window.clearInterval(metronomeScheduler);
     metronomeScheduler = null;
     if (audioContext && audioContext.state !== 'closed') audioContext.suspend();
-    $('metronomeButton').textContent = 'Uruchom metronom';
-    $('metronomeButton').closest('.tool-card').classList.remove('running');
+    syncMetronomeDisplay();
   }
 
   function toggleMetronome() {
@@ -584,23 +709,34 @@
   }
 
   function updateBreathTimerDisplay() {
+    let value = '12 sekund łącznie';
+    let status = '2 sekundy na przygotowanie, potem 10 sekund oceny z sygnałem startu, każdej sekundy i końca.';
     if (breathPhase === 'prepare') {
-      $('breathTimerValue').textContent = 'Przygotowanie: ' + breathSeconds + ' s';
-      $('breathTimerStatus').textContent = 'Udrożnij drogi oddechowe. Po podwójnym sygnale rozpocznij obserwację.';
-      return;
+      value = 'Przygotowanie: ' + breathSeconds + ' s';
+      status = 'Udrożnij drogi oddechowe. Po podwójnym sygnale rozpocznij obserwację.';
+    } else if (breathPhase === 'assess') {
+      value = 'Ocena: ' + breathSeconds + ' s';
+      status = 'START — obserwuj ruch klatki piersiowej, słuchaj i wyczuwaj oddech.';
+    } else if (breathPhase === 'complete') {
+      value = 'Koniec oceny';
+      status = '10 sekund minęło — oceń, czy oddech jest prawidłowy.';
     }
-    if (breathPhase === 'assess') {
-      $('breathTimerValue').textContent = 'Ocena: ' + breathSeconds + ' s';
-      $('breathTimerStatus').textContent = 'START — obserwuj ruch klatki piersiowej, słuchaj i wyczuwaj oddech.';
-      return;
+    const homeValue = $('breathTimerValue');
+    const homeStatus = $('breathTimerStatus');
+    const homeButton = $('breathTimerButton');
+    if (homeValue) homeValue.textContent = value;
+    if (homeStatus) homeStatus.textContent = status;
+    if (homeButton) {
+      homeButton.textContent = breathTimer ? 'Zatrzymaj i wyzeruj' : (breathPhase === 'complete' ? 'Uruchom ponownie' : 'Rozpocznij ocenę');
+      const homeCard = homeButton.closest('.tool-card');
+      if (homeCard) homeCard.classList.toggle('running', Boolean(breathTimer));
     }
-    if (breathPhase === 'complete') {
-      $('breathTimerValue').textContent = 'Koniec oceny';
-      $('breathTimerStatus').textContent = '10 sekund minęło — oceń, czy oddech jest prawidłowy.';
-      return;
-    }
-    $('breathTimerValue').textContent = '12 sekund łącznie';
-    $('breathTimerStatus').textContent = '2 sekundy na przygotowanie, potem 10 sekund oceny z sygnałem startu, każdej sekundy i końca.';
+    all('[data-breath-value]').forEach(function (element) { element.textContent = value; });
+    all('[data-breath-status]').forEach(function (element) { element.textContent = status; });
+    all('[data-breath-panel]').forEach(function (panel) { panel.classList.toggle('running', Boolean(breathTimer)); });
+    all('[data-procedure-tool="breath"]').forEach(function (button) {
+      button.textContent = breathTimer ? '■ Zatrzymaj i wyzeruj' : (breathPhase === 'complete' ? '▶ Uruchom ponownie 2+10 s' : '▶ Uruchom ocenę oddechu 2+10 s');
+    });
   }
 
   function stopBreathTimer(reset) {
@@ -613,8 +749,6 @@
       breathPhase = 'idle';
     }
     updateBreathTimerDisplay();
-    $('breathTimerButton').textContent = 'Rozpocznij ocenę';
-    $('breathTimerButton').closest('.tool-card').classList.remove('running');
   }
 
   function completeBreathTimer() {
@@ -624,8 +758,6 @@
     breathSeconds = 0;
     breathPhase = 'complete';
     updateBreathTimerDisplay();
-    $('breathTimerButton').textContent = 'Uruchom ponownie';
-    $('breathTimerButton').closest('.tool-card').classList.remove('running');
     if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
     showToast('10 sekund oceny minęło — podejmij decyzję o oddechu.');
   }
@@ -657,11 +789,10 @@
     breathSeconds = BREATH_PREP_SECONDS;
     breathStartedAt = Date.now();
     updateBreathTimerDisplay();
-    $('breathTimerButton').textContent = 'Zatrzymaj i wyzeruj';
-    $('breathTimerButton').closest('.tool-card').classList.add('running');
     if (context) scheduleBreathCues(context.currentTime);
     else showToast('Brak dźwięku w tej przeglądarce — obserwuj odliczanie i wibracje.');
     breathTimer = window.setInterval(updateBreathTimer, 100);
+    updateBreathTimerDisplay();
     showToast('Masz 2 sekundy na przygotowanie. Podwójny sygnał oznacza START.');
   }
 
@@ -672,6 +803,103 @@
       return;
     }
     startBreathTimer();
+  }
+
+  function syncProcedureTimerDisplay() {
+    all('[data-procedure-timer-panel]').forEach(function (panel) {
+      const seconds = Math.max(1, Number(panel.dataset.timerSeconds) || 60);
+      const label = panel.dataset.timerLabel || 'Pomiar czasu';
+      const matches = procedureTimerDuration === seconds && procedureTimerLabel === label;
+      const active = Boolean(procedureTimer) && matches;
+      const complete = procedureTimerComplete && matches;
+      const remaining = matches ? procedureTimerRemaining : seconds;
+      const value = panel.querySelector('[data-procedure-timer-value]');
+      const status = panel.querySelector('[data-procedure-timer-status]');
+      const button = panel.querySelector('[data-procedure-tool="timer"]');
+      if (value) value.textContent = label + ' · ' + formatDuration(remaining);
+      if (status) status.textContent = active ? 'Timer działa.' : (complete ? 'Czas minął — wykonaj kolejny krok.' : 'Timer jest gotowy.');
+      if (button) button.textContent = active ? '■ Zatrzymaj i wyzeruj' : (complete ? '⏱ Uruchom ponownie' : '⏱ Uruchom timer');
+      panel.classList.toggle('running', active);
+      panel.classList.toggle('complete', complete);
+    });
+  }
+
+  function stopProcedureTimer(reset) {
+    window.clearInterval(procedureTimer);
+    procedureTimer = null;
+    if (reset) {
+      procedureTimerRemaining = procedureTimerDuration;
+      procedureTimerComplete = false;
+    }
+    syncProcedureTimerDisplay();
+  }
+
+  function completeProcedureTimer() {
+    window.clearInterval(procedureTimer);
+    procedureTimer = null;
+    procedureTimerRemaining = 0;
+    procedureTimerComplete = true;
+    const context = ensureAudioContext();
+    if (context) {
+      scheduleTone(context.currentTime, 760, 0.18, 0.38);
+      scheduleTone(context.currentTime + 0.28, 520, 0.48, 0.46);
+    }
+    if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+    syncProcedureTimerDisplay();
+    showToast('Timer „' + procedureTimerLabel + '” zakończony.');
+  }
+
+  function updateProcedureTimer() {
+    procedureTimerRemaining = Math.max(0, Math.ceil((procedureTimerEndsAt - Date.now()) / 1000));
+    if (procedureTimerRemaining <= 0) {
+      completeProcedureTimer();
+      return;
+    }
+    syncProcedureTimerDisplay();
+  }
+
+  function toggleProcedureTimer(seconds, label) {
+    const duration = Math.max(1, Math.min(7200, Number(seconds) || 60));
+    const cleanLabel = cleanText(label, 100) || 'Pomiar czasu';
+    if (procedureTimer) {
+      stopProcedureTimer(true);
+      showToast('Timer został zatrzymany i wyzerowany.');
+      return;
+    }
+    procedureTimerDuration = duration;
+    procedureTimerRemaining = duration;
+    procedureTimerLabel = cleanLabel;
+    procedureTimerComplete = false;
+    procedureTimerEndsAt = Date.now() + duration * 1000;
+    procedureTimer = window.setInterval(updateProcedureTimer, 250);
+    syncProcedureTimerDisplay();
+    showToast('Uruchomiono timer: ' + cleanLabel + '.');
+  }
+
+  function saveTimeMark(key) {
+    if (!key) return;
+    const value = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    timeMarks.set(key, value);
+    syncTimeMarks();
+    showToast('Zapisano godzinę: ' + value + '.');
+  }
+
+  function syncTimeMarks() {
+    all('[data-time-mark-panel]').forEach(function (panel) {
+      const value = timeMarks.get(panel.dataset.timeMarkPanel);
+      const status = panel.querySelector('[data-time-mark-status]');
+      const button = panel.querySelector('[data-procedure-tool="time-mark"]');
+      if (status) status.textContent = value ? 'Zapisana godzina: ' + value : 'Godzina nie została jeszcze zapisana.';
+      if (button) button.textContent = value ? '↻ Zapisz nową godzinę' : '⏱ Zapisz godzinę';
+      panel.classList.toggle('complete', Boolean(value));
+    });
+  }
+
+  function syncToolDisplays() {
+    syncMetronomeDisplay();
+    updateBreathTimerDisplay();
+    syncProcedureTimerDisplay();
+    syncTimeMarks();
   }
 
   function renderEntityForm() {
@@ -690,22 +918,13 @@
         '<label class="wide"><span>Lokalizacja</span><input name="location" required maxlength="240" placeholder="budynek, pomieszczenie, pojazd"></label>',
         '<label class="wide"><span>Najważniejsze wyposażenie</span><textarea name="contents" rows="3" maxlength="700" placeholder="opatrunki, rękawiczki, koc termiczny…"></textarea></label>'
       ].join('');
-    } else {
-      fields = [
-        '<label><span>Imię i nazwisko</span><input name="name" required maxlength="120"></label>',
-        '<label><span>Telefon</span><input name="phone" required inputmode="tel" maxlength="20"></label>',
-        '<label><span>Zakład / obszar</span><input name="zone" maxlength="160"></label>',
-        '<label><span>Lokalizacja / baza</span><input name="location" maxlength="180"></label>',
-        '<label class="wide"><span>Uprawnienia</span><input name="skills" maxlength="240" placeholder="np. KPP, AED"></label>'
-      ].join('');
     }
     $('entityForm').innerHTML = fields + '<button class="button primary" type="submit">Dodaj pozycję</button>';
   }
 
   function entitySummary(item) {
     if (selectedEntity === 'aeds') return item.location;
-    if (selectedEntity === 'kits') return [item.type, item.location].filter(Boolean).join(' · ');
-    return [item.zone, item.location, item.phone].filter(Boolean).join(' · ');
+    return [item.type, item.location].filter(Boolean).join(' · ');
   }
 
   function renderEntityList() {
@@ -738,8 +957,6 @@
       item = normalizeAed({ id: id, name: formData.get('name'), location: formData.get('location'), lat: formData.get('lat') || null, lon: formData.get('lon') || null }, 0);
     } else if (selectedEntity === 'kits') {
       item = normalizeKit({ id: id, name: formData.get('name'), location: formData.get('location'), type: formData.get('type'), contents: formData.get('contents') }, 0);
-    } else {
-      item = normalizeRescuer({ id: id, name: formData.get('name'), phone: formData.get('phone'), zone: formData.get('zone'), location: formData.get('location'), skills: formData.get('skills'), active: true }, 0);
     }
     state[selectedEntity].push(item);
     saveState();
@@ -762,7 +979,7 @@
   }
 
   function resetDemoData() {
-    if (!window.confirm('Przywrócić wszystkie demonstracyjne AED, apteczki i ratowników? Twoje lokalne zmiany zostaną zastąpione.')) return;
+    if (!window.confirm('Przywrócić wszystkie demonstracyjne AED i apteczki? Twoje lokalne zmiany zostaną zastąpione.')) return;
     const preferences = clone(state.preferences);
     state = normalizeState(DATA.defaultState);
     state.preferences = preferences;
@@ -803,7 +1020,7 @@
       try {
         const payload = JSON.parse(String(reader.result || ''));
         const imported = payload && payload.data ? payload.data : payload;
-        if (!imported || !Array.isArray(imported.aeds) || !Array.isArray(imported.kits) || !Array.isArray(imported.rescuers)) throw new Error('invalid');
+        if (!imported || !Array.isArray(imported.aeds) || !Array.isArray(imported.kits)) throw new Error('invalid');
         if (!window.confirm('Import zastąpi bieżące dane lokalne. Kontynuować?')) return;
         state = normalizeState(imported);
         saveState();
@@ -823,8 +1040,20 @@
 
   function updateNetworkStatus() {
     const online = navigator.onLine;
-    $('networkBadge').classList.toggle('offline', !online);
-    $('networkBadge').querySelector('span').textContent = online ? 'Online' : 'Offline';
+    const badge = $('networkBadge');
+    const banner = $('offlineBanner');
+    badge.classList.toggle('offline', !online);
+    badge.querySelector('span').textContent = online ? 'Online' : 'Offline';
+    badge.setAttribute('aria-label', online ? 'Aplikacja jest online' : 'Aplikacja jest offline i korzysta z danych lokalnych');
+    banner.hidden = online;
+    if (online) {
+      try { localStorage.setItem(LAST_ONLINE_KEY, new Date().toISOString()); } catch (error) { /* Informacja pomocnicza. */ }
+      return;
+    }
+    let lastOnline = '';
+    try { lastOnline = localStorage.getItem(LAST_ONLINE_KEY) || ''; } catch (error) { /* Informacja pomocnicza. */ }
+    const formatted = lastOnline ? new Date(lastOnline).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : 'brak danych';
+    $('offlineDetails').textContent = 'Procedury i narzędzia działają lokalnie · wersja ' + DATA.version + ' · ostatnie połączenie: ' + formatted + '.';
   }
 
   function setupInstallPrompt() {
@@ -878,11 +1107,30 @@
 
   function attachEvents() {
     document.addEventListener('click', function (event) {
+      const onlineLink = event.target.closest('[data-online-required]');
+      if (onlineLink && !navigator.onLine) {
+        event.preventDefault();
+        showToast('Ta funkcja wymaga internetu. Procedury i narzędzia nadal działają offline.');
+        return;
+      }
+
       const nav = event.target.closest('[data-nav], [data-go]');
       if (nav) showScreen(nav.dataset.nav || nav.dataset.go);
 
       const procedureButton = event.target.closest('[data-procedure]');
-      if (procedureButton) openProcedure(procedureButton.dataset.procedure);
+      if (procedureButton) openProcedure(procedureButton.dataset.procedure, procedureButton.dataset.procedureStep);
+
+      const guideButton = event.target.closest('[data-guide-action]');
+      if (guideButton) handleGuideAction(guideButton.dataset.guideAction);
+
+      const toolButton = event.target.closest('[data-procedure-tool]');
+      if (toolButton) {
+        const tool = toolButton.dataset.procedureTool;
+        if (tool === 'breath') toggleBreathTimer();
+        else if (tool === 'metronome') toggleMetronome();
+        else if (tool === 'timer') toggleProcedureTimer(toolButton.dataset.seconds, toolButton.dataset.label);
+        else if (tool === 'time-mark') saveTimeMark(toolButton.dataset.markKey);
+      }
 
       const closeButton = event.target.closest('[data-close-dialog]');
       if (closeButton) closeDialog(closeButton.dataset.closeDialog);
@@ -892,7 +1140,10 @@
     window.addEventListener('online', updateNetworkStatus);
     window.addEventListener('offline', updateNetworkStatus);
 
-    $('emergencyGuideButton').addEventListener('click', function () { showDialog('emergencyDialog'); });
+    $('emergencyGuideButton').addEventListener('click', function () {
+      renderGuide('safety');
+      showDialog('emergencyDialog');
+    });
     $('getLocationButton').addEventListener('click', getLocation);
     $('resourceLocationButton').addEventListener('click', getLocation);
     $('openReportButton').addEventListener('click', openReport);
@@ -994,14 +1245,14 @@
     renderQuickActions();
     renderProcedureFilters();
     renderProcedures();
-    renderEmergencyChoices();
+    renderGuide('safety');
     renderReportTypes();
     renderResourceCounts();
     updateLocationSummary();
     renderResources();
     renderDataManager();
     applyPreferences();
-    updateBreathTimerDisplay();
+    syncToolDisplays();
     updateNetworkStatus();
     attachEvents();
     setupInstallPrompt();

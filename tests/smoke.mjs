@@ -63,7 +63,8 @@ class FakeElement {
       ['data-nav', 'nav'], ['data-go', 'go'], ['data-procedure', 'procedure'],
       ['data-close-dialog', 'closeDialog'], ['data-category', 'category'],
       ['data-resource', 'resource'], ['data-entity', 'entity'],
-      ['data-delete-entity', 'deleteEntity']
+      ['data-delete-entity', 'deleteEntity'], ['data-guide-action', 'guideAction'],
+      ['data-procedure-tool', 'procedureTool'], ['data-online-required', 'onlineRequired']
     ];
     for (const [attribute, key] of checks) {
       if (selector.includes('[' + attribute + ']') && this.dataset[key] !== undefined) return this;
@@ -88,6 +89,18 @@ assert.match(homeMarkup, /id="metronomeButton"/);
 assert.match(homeMarkup, /id="breathTimerButton"/);
 assert.doesNotMatch(toolsMarkup, /id="metronomeButton"/);
 assert.doesNotMatch(toolsMarkup, /id="breathTimerButton"/);
+const safetyPosition = homeMarkup.indexOf('class="safety-strip"');
+const sequencePosition = homeMarkup.indexOf('class="section-block sequence-section"');
+const helpPosition = homeMarkup.indexOf('class="emergency-call-section"');
+const emergencyToolsPosition = homeMarkup.indexOf('class="section-block emergency-tools-section"');
+const quickActionsPosition = homeMarkup.indexOf('id="quickTitle"');
+assert.ok(safetyPosition >= 0 && safetyPosition < sequencePosition);
+assert.ok(sequencePosition < helpPosition);
+assert.ok(helpPosition < emergencyToolsPosition);
+assert.ok(emergencyToolsPosition < quickActionsPosition);
+assert.match(homeMarkup, /rękawiczki nitrylowe/);
+assert.match(homeMarkup, /okulary ochronne/);
+assert.match(html, /id="offlineBanner"/);
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
 elements.get('reportCasualties').value = '1';
@@ -99,8 +112,8 @@ const screens = ['home', 'procedures', 'resources', 'tools'].map((name) => {
 });
 const dialogs = ['procedureDialog', 'emergencyDialog', 'reportDialog', 'dataDialog'].map((id) => elements.get(id));
 const navigation = ['home', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
-const resourceTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { resource: name } }));
-const entityTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { entity: name } }));
+const resourceTabs = ['aeds', 'kits'].map((name) => new FakeElement('', { dataset: { resource: name } }));
+const entityTabs = ['aeds', 'kits'].map((name) => new FakeElement('', { dataset: { entity: name } }));
 elements.get('metronomeButton').parentToolCard = new FakeElement('metronome-card', { classes: ['tool-card'] });
 elements.get('breathTimerButton').parentToolCard = new FakeElement('breath-timer-card', { classes: ['tool-card'] });
 const metaTheme = new FakeElement('meta-theme');
@@ -234,6 +247,8 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
+assert.equal(context.window.RATOWNIK_DATA.version, '2.4.0');
+assert.equal(context.window.RATOWNIK_DATA.procedures.find((item) => item.id === 'oparzenie').steps[1].tools[0].seconds, 1200);
 const appSource = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 assert.match(appSource, /const BREATH_PREP_SECONDS = 2;/);
 assert.match(appSource, /const BREATH_ASSESS_SECONDS = 10;/);
@@ -256,11 +271,45 @@ elements.get('breathTimerButton').dispatch('click');
 assert.equal(elements.get('breathTimerValue').textContent, '12 sekund łącznie');
 assert.equal(elements.get('breathTimerButton').textContent, 'Rozpocznij ocenę');
 assert.equal(scheduledIntervals.size, 0);
+
+const inlineMetronomeTarget = new FakeElement('', { dataset: { procedureTool: 'metronome' } });
+fakeDocument.dispatch('click', inlineMetronomeTarget);
+assert.equal(elements.get('metronomeButton').textContent, 'Zatrzymaj metronom');
+assert.equal([...scheduledIntervals.values()].some((timer) => timer.delay === 25), true);
+fakeDocument.dispatch('click', inlineMetronomeTarget);
+assert.equal(elements.get('metronomeButton').textContent, 'Uruchom metronom');
+
+const inlineTimerTarget = new FakeElement('', { dataset: { procedureTool: 'timer', seconds: '5', label: 'Test działania' } });
+fakeDocument.dispatch('click', inlineTimerTarget);
+assert.equal([...scheduledIntervals.values()].some((timer) => timer.delay === 250), true);
+fakeDocument.dispatch('click', inlineTimerTarget);
+assert.equal([...scheduledIntervals.values()].some((timer) => timer.delay === 250), false);
+
+const inlineTimeMarkTarget = new FakeElement('', { dataset: { procedureTool: 'time-mark', markKey: 'test:1' } });
+fakeDocument.dispatch('click', inlineTimeMarkTarget);
+assert.match(elements.get('toast').textContent, /Zapisano godzinę/);
 assert.equal((elements.get('procedureList').innerHTML.match(/data-procedure=/g) || []).length, 10);
 assert.equal(elements.get('aedCount').textContent, 3);
 assert.match(elements.get('resourceList').innerHTML, /AED — wejście główne/);
 assert.equal(elements.get('screen-home').hidden, false);
 assert.equal(elements.get('screen-procedures').hidden, true);
+
+elements.get('emergencyGuideButton').dispatch('click');
+assert.equal(elements.get('emergencyDialog').open, true);
+assert.equal(elements.get('guideTitle').textContent, 'Czy miejsce jest bezpieczne?');
+const guideSafeTarget = new FakeElement('', { dataset: { guideAction: 'safe' } });
+fakeDocument.dispatch('click', guideSafeTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Czy poszkodowany reaguje?');
+const guideUnresponsiveTarget = new FakeElement('', { dataset: { guideAction: 'unresponsive' } });
+fakeDocument.dispatch('click', guideUnresponsiveTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Oceń oddech');
+const guideAbnormalTarget = new FakeElement('', { dataset: { guideAction: 'breathing-abnormal' } });
+fakeDocument.dispatch('click', guideAbnormalTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Wezwij 112 i rozpocznij RKO');
+assert.match(elements.get('emergencyChoices').innerHTML, /data-procedure-tool="metronome"/);
+const guideRkoTarget = new FakeElement('', { dataset: { procedure: 'rko-dorosly', procedureStep: '4' } });
+fakeDocument.dispatch('click', guideRkoTarget);
+assert.equal(elements.get('stepProgressText').textContent, 'Krok 5 z 7');
 
 elements.get('procedureSearch').value = 'udar';
 elements.get('procedureSearch').dispatch('input');
@@ -272,8 +321,27 @@ fakeDocument.dispatch('click', procedureTarget);
 assert.equal(elements.get('procedureDialog').open, true);
 assert.match(elements.get('procedureContent').innerHTML, /RKO dorosłego i AED/);
 assert.equal(elements.get('stepProgressText').textContent, 'Krok 1 z 7');
+assert.match(elements.get('procedureContent').innerHTML, /step-details/);
 elements.get('nextStepButton').dispatch('click');
 assert.equal(elements.get('stepProgressText').textContent, 'Krok 2 z 7');
+elements.get('nextStepButton').dispatch('click');
+assert.match(elements.get('procedureContent').innerHTML, /href="tel:112"/);
+elements.get('nextStepButton').dispatch('click');
+assert.match(elements.get('procedureContent').innerHTML, /data-procedure-tool="breath"/);
+elements.get('nextStepButton').dispatch('click');
+assert.match(elements.get('procedureContent').innerHTML, /data-procedure-tool="metronome"/);
+
+const burnTarget = new FakeElement('', { dataset: { procedure: 'oparzenie' } });
+fakeDocument.dispatch('click', burnTarget);
+elements.get('nextStepButton').dispatch('click');
+assert.match(elements.get('procedureContent').innerHTML, /data-seconds="1200"/);
+
+const bleedTarget = new FakeElement('', { dataset: { procedure: 'krwotok' } });
+fakeDocument.dispatch('click', bleedTarget);
+elements.get('nextStepButton').dispatch('click');
+elements.get('nextStepButton').dispatch('click');
+elements.get('nextStepButton').dispatch('click');
+assert.match(elements.get('procedureContent').innerHTML, /data-procedure-tool="time-mark"/);
 
 const toolsTarget = new FakeElement('', { dataset: { nav: 'tools' } });
 fakeDocument.dispatch('click', toolsTarget);
@@ -296,4 +364,12 @@ assert.ok(storage.has('ratownik_plk_v2_state'));
 elements.get('resourceTabs').dispatch('click', resourceTabs[1]);
 assert.match(elements.get('resourceList').innerHTML, /Apteczka — portiernia/);
 
-console.log('Test DOM: OK (start, timer dźwiękowy 2+10 s, metronom, procedura krokowa, nawigacja, raport, motyw, zasoby)');
+context.navigator.onLine = false;
+for (const callback of windowListeners.get('offline') || []) callback();
+assert.equal(elements.get('offlineBanner').hidden, false);
+assert.equal(elements.get('networkBadge').childSpan.textContent, 'Offline');
+context.navigator.onLine = true;
+for (const callback of windowListeners.get('online') || []) callback();
+assert.equal(elements.get('offlineBanner').hidden, true);
+
+console.log('Test DOM: OK (hierarchia Start, Prowadź mnie, narzędzia w procedurach, offline, timer 2+10 s, metronom, raport, motyw, zasoby)');

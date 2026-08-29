@@ -63,6 +63,13 @@ def main():
         if relative:
             assert (ROOT / relative).exists(), f"Service worker odwołuje się do brakującego pliku: {reference}"
 
+    data_source = (ROOT / "data.js").read_text(encoding="utf-8")
+    data_version = re.search(r"version:\s*'([^']+)'", data_source)
+    cache_version = re.search(r"CACHE_NAME\s*=\s*'ratownik-plk-v2-([^']+)'", service_worker)
+    assert data_version and cache_version and data_version.group(1) == cache_version.group(1), "Wersja danych i cache PWA musi być zgodna"
+    assert "Ratownik demonstracyjny" not in data_source, "Publiczne dane nie mogą zawierać listy ratowników"
+    assert "data-procedure-tool" in app_source, "Brak narzędzi uruchamianych z procedur"
+
     assert "WSTAW_TUTAJ" not in "\n".join(
         path.read_text(encoding="utf-8", errors="ignore")
         for path in ROOT.glob("*.js")

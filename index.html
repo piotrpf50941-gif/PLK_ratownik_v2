@@ -36,13 +36,48 @@
     <button id="updateButton" type="button">Odśwież</button>
   </div>
 
+  <div id="offlineBanner" class="offline-banner" role="status" hidden>
+    <strong>OFFLINE — dane zapisane lokalnie</strong>
+    <span id="offlineDetails">Procedury i podstawowe narzędzia pozostają dostępne.</span>
+  </div>
+
   <main id="mainContent" class="app-shell">
     <section id="screen-home" class="screen active" aria-labelledby="homeTitle">
       <article class="emergency-hero">
         <div class="hero-copy">
           <span class="eyebrow">TRYB NAGŁY</span>
           <h1 id="homeTitle">Pomoc bez szukania po menu</h1>
-          <p>Wezwij służby albo od razu uruchom prowadzenie krok po kroku.</p>
+          <p>Najpierw bezpieczeństwo, potem proste czynności we właściwej kolejności.</p>
+        </div>
+      </article>
+
+      <section class="safety-strip" aria-label="Najważniejsza kolejność działania">
+        <div class="safety-icon" aria-hidden="true">!</div>
+        <div>
+          <strong>Najpierw własne bezpieczeństwo</strong>
+          <p>Oceń zagrożenia: ruch kolejowy, sieć trakcyjna, ogień, ruch pojazdów, substancje niebezpieczne i niestabilne elementy. Nie wchodź w strefę zagrożenia.</p>
+          <p class="safety-ppe"><span>Środki ochrony osobistej:</span> przed kontaktem z poszkodowanym zastosuj wyposażenie odpowiednie do zagrożenia, np. rękawiczki nitrylowe i okulary ochronne.</p>
+        </div>
+      </section>
+
+      <section class="section-block sequence-section" aria-labelledby="sequenceTitle">
+        <div class="section-heading compact">
+          <div>
+            <span class="section-kicker">PIERWSZA MINUTA</span>
+            <h2 id="sequenceTitle">Podstawowa sekwencja 1–2–3</h2>
+          </div>
+        </div>
+        <ol class="sequence-list">
+          <li><span>1</span><div><strong>Zabezpiecz miejsce zdarzenia</strong><small>Ostrzeż innych i ogranicz dostęp do strefy zagrożenia. Nie podchodź, dopóki nie jest bezpiecznie.</small></div></li>
+          <li><span>2</span><div><strong>Sprawdź reakcję i dzwoń 112</strong><small>Przy braku reakcji uruchom połączenie i włącz głośnik.</small></div></li>
+          <li><span>3</span><div><strong>Oceń oddech i działaj</strong><small>Oddech oceniaj nie dłużej niż 10 sekund; rozpocznij RKO i użyj AED, jeśli nie jest prawidłowy.</small></div></li>
+        </ol>
+      </section>
+
+      <section class="emergency-call-section" aria-labelledby="callHelpTitle">
+        <div>
+          <span class="eyebrow">WEZWANIE POMOCY</span>
+          <h2 id="callHelpTitle">Zadzwoń lub pozwól aplikacji Cię poprowadzić</h2>
         </div>
         <div class="hero-actions">
           <a class="button call-button" href="tel:112" aria-label="Zadzwoń pod numer alarmowy 112">
@@ -51,10 +86,10 @@
           </a>
           <button id="emergencyGuideButton" class="button guide-button" type="button">
             <span class="button-icon" aria-hidden="true">→</span>
-            <span><small>Nie wiesz, co wybrać?</small><strong>Prowadź mnie</strong></span>
+            <span><small>Co mam teraz zrobić?</small><strong>Prowadź mnie</strong></span>
           </button>
         </div>
-      </article>
+      </section>
 
       <section class="section-block emergency-tools-section" aria-labelledby="emergencyToolsTitle">
         <div class="section-heading compact">
@@ -96,28 +131,6 @@
         <div id="quickActions" class="quick-grid"></div>
       </section>
 
-      <section class="safety-strip" aria-label="Najważniejsza kolejność działania">
-        <div class="safety-icon" aria-hidden="true">!</div>
-        <div>
-          <strong>Najpierw własne bezpieczeństwo</strong>
-          <p>Ruch kolejowy, sieć trakcyjna, ogień i ruch pojazdów mogą nadal zagrażać.</p>
-        </div>
-      </section>
-
-      <section class="section-block sequence-section" aria-labelledby="sequenceTitle">
-        <div class="section-heading compact">
-          <div>
-            <span class="section-kicker">PIERWSZA MINUTA</span>
-            <h2 id="sequenceTitle">Prosta sekwencja 1–2–3</h2>
-          </div>
-        </div>
-        <ol class="sequence-list">
-          <li><span>1</span><div><strong>Zabezpiecz miejsce</strong><small>Nie podchodź, dopóki nie jest bezpiecznie.</small></div></li>
-          <li><span>2</span><div><strong>Sprawdź reakcję i dzwoń 112</strong><small>Przy braku reakcji uruchom połączenie i włącz głośnik.</small></div></li>
-          <li><span>3</span><div><strong>Oceń oddech i działaj</strong><small>Oddech oceniaj nie dłużej niż 10 sekund; rozpocznij RKO i użyj AED, jeśli nie jest prawidłowy.</small></div></li>
-        </ol>
-      </section>
-
       <section class="location-card" aria-labelledby="locationTitle">
         <div class="location-copy">
           <span class="location-symbol" aria-hidden="true">⌖</span>
@@ -154,14 +167,13 @@
         <div>
           <span class="section-kicker">POMOC W POBLIŻU</span>
           <h1 id="resourcesTitle">Zasoby ratunkowe</h1>
-          <p>AED, apteczki i ratownicy w jednej, przeszukiwalnej liście.</p>
+          <p>Publiczne dane demonstracyjne AED i apteczek, dostępne również offline.</p>
         </div>
         <button id="resourceLocationButton" class="button secondary" type="button">Użyj GPS</button>
       </header>
       <div id="resourceTabs" class="segment-control" role="tablist" aria-label="Rodzaj zasobu">
         <button type="button" role="tab" aria-selected="true" data-resource="aeds">AED <span id="aedCount">0</span></button>
         <button type="button" role="tab" aria-selected="false" data-resource="kits">Apteczki <span id="kitCount">0</span></button>
-        <button type="button" role="tab" aria-selected="false" data-resource="rescuers">Ratownicy <span id="rescuerCount">0</span></button>
       </div>
       <label class="search-box resource-search">
         <span aria-hidden="true">⌕</span>
@@ -186,11 +198,10 @@
       </section>
 
       <section class="settings-card" aria-labelledby="dataTitle">
-        <div class="settings-title"><span aria-hidden="true">▣</span><div><h2 id="dataTitle">Dane lokalne</h2><p>Zasoby są zapisane wyłącznie na tym urządzeniu.</p></div></div>
+        <div class="settings-title"><span aria-hidden="true">▣</span><div><h2 id="dataTitle">Dane demonstracyjne</h2><p>AED i apteczki są zapisane wyłącznie na tym urządzeniu. Nie wpisuj tutaj danych osobowych.</p></div></div>
         <div class="data-summary">
           <span><strong id="dataAedCount">0</strong>AED</span>
           <span><strong id="dataKitCount">0</strong>apteczki</span>
-          <span><strong id="dataRescuerCount">0</strong>ratownicy</span>
         </div>
         <div class="button-row">
           <button id="manageDataButton" class="button primary" type="button">Zarządzaj danymi</button>
@@ -198,6 +209,11 @@
           <button id="importButton" class="button secondary" type="button">Import JSON</button>
           <input id="importFile" type="file" accept="application/json,.json" hidden>
         </div>
+      </section>
+
+      <section class="settings-card internal-zone" aria-labelledby="internalZoneTitle">
+        <div class="settings-title"><span aria-hidden="true">⌾</span><div><h2 id="internalZoneTitle">Część wewnętrzna</h2><p>Profil pracownika, ratownicy, alarmowanie oraz ewidencja techniczna będą dostępne dopiero po bezpiecznym logowaniu i sprawdzeniu uprawnień.</p></div></div>
+        <p class="context-hint">Ta publiczna wersja nie pobiera ani nie zawiera numerów telefonów i danych pracowników.</p>
       </section>
 
       <section class="about-card">
@@ -239,14 +255,14 @@
     </div>
   </dialog>
 
-  <dialog id="emergencyDialog" class="sheet-dialog" aria-label="Szybki wybór zdarzenia">
+  <dialog id="emergencyDialog" class="sheet-dialog" aria-label="Interaktywne prowadzenie przez zdarzenie">
     <div class="sheet-shell">
       <header class="sheet-header">
-        <div><span class="section-kicker">SZYBKI WYBÓR</span><h2>Co widzisz?</h2></div>
+        <div><span class="section-kicker">PROWADŹ MNIE</span><h2 id="guideTitle">Co mam teraz zrobić?</h2></div>
         <button class="round-button" type="button" data-close-dialog="emergencyDialog" aria-label="Zamknij">×</button>
       </header>
-      <p>Wybierz najlepiej pasującą sytuację. W zagrożeniu życia równocześnie wezwij 112.</p>
-      <div id="emergencyChoices" class="emergency-choice-list"></div>
+      <p id="guidePrompt">Odpowiedz jednym dotknięciem. Aplikacja pokaże kolejną czynność.</p>
+      <div id="emergencyChoices" class="guide-flow" aria-live="polite"></div>
       <a class="button call-button compact-call" href="tel:112"><span>☎</span><strong>Zadzwoń pod 112</strong></a>
     </div>
   </dialog>
@@ -275,7 +291,7 @@
     </form>
   </dialog>
 
-  <dialog id="dataDialog" class="data-dialog" aria-label="Zarządzanie lokalnymi zasobami">
+  <dialog id="dataDialog" class="data-dialog" aria-label="Zarządzanie demonstracyjnymi AED i apteczkami">
     <div class="dialog-shell data-dialog-shell">
       <header class="dialog-header data-dialog-header">
         <div><span class="section-kicker">EDYCJA LOKALNA</span><h2>Zarządzaj zasobami</h2></div>
@@ -284,7 +300,6 @@
       <div id="dataTabs" class="segment-control data-tabs" role="tablist">
         <button type="button" role="tab" aria-selected="true" data-entity="aeds">AED</button>
         <button type="button" role="tab" aria-selected="false" data-entity="kits">Apteczki</button>
-        <button type="button" role="tab" aria-selected="false" data-entity="rescuers">Ratownicy</button>
       </div>
       <form id="entityForm" class="entity-form"></form>
       <div class="data-list-header"><h3>Zapisane pozycje</h3><button id="resetDemoButton" class="text-button danger-text" type="button">Przywróć dane demo</button></div>

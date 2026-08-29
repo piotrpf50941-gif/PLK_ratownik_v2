@@ -8,26 +8,31 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 
 | Obszar | Przeznaczenie |
 |---|---|
-| **Start** | wezwanie 112 i najpilniejsze procedury |
+| **Start** | własne bezpieczeństwo, sekwencja 1–2–3, wezwanie 112 i narzędzia natychmiastowe |
 | **Procedury** | wyszukiwarka oraz prowadzenie krok po kroku |
-| **Zasoby** | AED, apteczki i ratownicy |
-| **Więcej** | metronom, timer, ustawienia i dane lokalne |
+| **Zasoby** | demonstracyjne AED i apteczki dostępne offline |
+| **Więcej** | ustawienia, dane demonstracyjne i informacja o części wewnętrznej |
 
 ## Funkcje
 
 - szybki telefon pod 112,
-- tryb krokowy procedur,
+- blok bezpieczeństwa własnego i środków ochrony osobistej przed narzędziami oraz procedurami,
+- podstawowa sekwencja ratownicza 1–2–3 widoczna od razu na ekranie Start,
+- interaktywne „Prowadź mnie”: bezpieczeństwo → reakcja → oddech → właściwa procedura,
+- tryb krokowy procedur z krótkim poleceniem i rozwijanym opisem,
 - RKO dorosłego i dziecka, AED, zadławienie, krwotok, oparzenie, porażenie prądem, wypadek kolejowy, drgawki, pozycja boczna i FAST,
 - metronom RKO 110/min dostępny bezpośrednio na ekranie Start,
 - wspomagana dźwiękiem ocena oddechu: 2 sekundy przygotowania i pełne 10 sekund obserwacji,
+- metronom, ocena oddechu, timer, zapis godziny i telefon 112 dostępne bezpośrednio w odpowiednich krokach procedur,
 - pobieranie GPS i generator treści zgłoszenia,
 - sortowanie AED według przybliżonej odległości,
-- połączenia i SMS do ratowników,
-- lokalne dodawanie i usuwanie AED, apteczek oraz ratowników,
+- lokalne dodawanie i usuwanie demonstracyjnych AED oraz apteczek,
 - import i eksport kopii JSON,
 - tryb ciemny i większy tekst,
 - instalacja jako PWA i działanie offline,
 - spójny zestaw nowych grafik dopasowanych do każdej procedury.
+
+Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Profil, ratownicy, alarmowanie, kontrole i panel administracyjny wymagają osobnej, uwierzytelnionej części. Kierunek techniczny opisuje [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
 
 ## Uruchomienie lokalne
 
@@ -49,6 +54,7 @@ node --check data.js
 node --check sw.js
 python3 tests/validate.py
 node tests/smoke.mjs
+node tests/offline.mjs
 ```
 
 ## Publikacja

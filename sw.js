@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'ratownik-plk-v2-2.2.0';
+const CACHE_NAME = 'ratownik-plk-v2-2.4.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './assets/topics/sec09.jpg',
   './assets/topics/sec10.jpg'
 ];
+const CACHEABLE_PATHS = new Set(APP_SHELL.map(function (path) { return new URL(path, self.location.href).pathname; }));
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
@@ -60,6 +61,8 @@ self.addEventListener('fetch', function (event) {
     );
     return;
   }
+
+  if (!CACHEABLE_PATHS.has(url.pathname)) return;
 
   event.respondWith(
     caches.match(event.request).then(function (cached) {
