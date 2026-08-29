@@ -27,6 +27,8 @@ jobs:
         run: node --check app.js && node --check data.js && node --check sw.js
       - name: Uruchom testy integralności i DOM
         run: python3 tests/validate.py && node tests/smoke.mjs
+      - name: Sprawdź tryb offline i układ mobilny
+        run: node tests/offline.mjs && node tests/mobile-layout.mjs
       - name: Skonfiguruj Pages
         uses: actions/configure-pages@v5
         with:
