@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: membership, error: membershipError } = await admin
       .from('memberships')
-      .select('id')
+      .select('id,organization_id')
       .eq('id', body.membershipId)
       .eq('user_id', user.id)
       .eq('role', 'responder')
@@ -61,7 +61,7 @@ Deno.serve(async (req: Request) => {
 
     await admin.from('audit_log').insert({
       actor_id: user.id,
-      organization_id: null,
+      organization_id: membership.organization_id,
       action: 'push_subscription_registered',
       entity_type: 'push_subscription',
       entity_id: subscriptionId,
