@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'ratownik-plk-v2-2.5.0';
+const CACHE_NAME = 'ratownik-plk-v2-2.6.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,6 +22,8 @@ const APP_SHELL = [
   './assets/topics/sec10.jpg'
 ];
 const CACHEABLE_PATHS = new Set(APP_SHELL.map(function (path) { return new URL(path, self.location.href).pathname; }));
+const PUBLIC_SCOPE_PATH = new URL(self.registration.scope).pathname;
+const PUBLIC_NAVIGATION_PATHS = new Set([PUBLIC_SCOPE_PATH, PUBLIC_SCOPE_PATH + 'index.html']);
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
@@ -50,6 +52,8 @@ self.addEventListener('fetch', function (event) {
   if (url.origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {
+    // Panel wewnętrzny pozostaje poza publicznym cache i fallbackiem offline.
+    if (!PUBLIC_NAVIGATION_PATHS.has(url.pathname)) return;
     event.respondWith(
       fetch(event.request)
         .then(function (response) {
