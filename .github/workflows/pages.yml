@@ -3,6 +3,8 @@ name: Publikacja GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,11 +13,27 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v4
+      - name: Sprawdź składnię JavaScript
+        run: node --check app.js && node --check data.js && node --check sw.js && node --check internal/app.js
+      - name: Uruchom testy integralności i DOM
+        run: python3 tests/validate.py && node tests/smoke.mjs
+      - name: Sprawdź tryb offline i układ mobilny
+        run: node tests/offline.mjs && node tests/mobile-layout.mjs
+      - name: Sprawdź bezpieczeństwo panelu wewnętrznego
+        run: node tests/internal-platform.mjs
+
   deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -23,12 +41,6 @@ jobs:
     steps:
       - name: Pobierz kod
         uses: actions/checkout@v4
-      - name: Sprawdź składnię JavaScript
-        run: node --check app.js && node --check data.js && node --check sw.js
-      - name: Uruchom testy integralności i DOM
-        run: python3 tests/validate.py && node tests/smoke.mjs
-      - name: Sprawdź tryb offline i układ mobilny
-        run: node tests/offline.mjs && node tests/mobile-layout.mjs
       - name: Skonfiguruj Pages
         uses: actions/configure-pages@v5
         with:
