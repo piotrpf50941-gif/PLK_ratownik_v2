@@ -714,8 +714,8 @@
   function renderResponderAccessCard() {
     return [
       '<article class="resource-card internal-access">',
-      '<span class="resource-icon rescuer" aria-hidden="true">♟</span>',
-      '<div class="resource-copy"><div class="resource-title-line"><strong>Ratownicy i alarmowanie</strong><span class="readiness-badge warning">CHRONIONE</span></div>',
+      '<span class="resource-icon rescuer" aria-hidden="true">👥</span>',
+      '<div class="resource-copy"><div class="resource-title-line"><strong>Ratownicy i alarmowanie</strong><span class="resource-status warning"><i></i>CHRONIONE</span></div>',
       '<span>Lista ratowników, numery telefonów, jednostki i historia alarmów nie są zapisane w publicznej aplikacji.</span>',
       '<small>Zaloguj się kontem wcześniej zatwierdzonym przez administratora.</small>',
       '<a class="button primary resource-login-button" href="internal/">OTWÓRZ LOGOWANIE</a>',
