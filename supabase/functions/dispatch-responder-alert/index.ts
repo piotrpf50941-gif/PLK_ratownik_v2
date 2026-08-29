@@ -52,6 +52,35 @@ function mapUrl(latitude: number | null, longitude: number | null) {
   return 'https://www.google.com/maps?q=' + latitude + ',' + longitude
 }
 
+async function hasScopedAccess(
+  admin: ReturnType<typeof adminClient>,
+  memberships: Array<{ organization_id: string; role: string }>,
+  targetOrganizationId: string
+) {
+  if (memberships.some((membership) => membership.role === 'system_admin')) return true
+  if (memberships.some((membership) => membership.organization_id === targetOrganizationId)) return true
+
+  const administeredOrganizations = new Set(
+    memberships
+      .filter((membership) => membership.role === 'unit_admin')
+      .map((membership) => membership.organization_id)
+  )
+
+  let cursor: string | null = targetOrganizationId
+  for (let depth = 0; cursor && depth < 16; depth += 1) {
+    if (administeredOrganizations.has(cursor)) return true
+    const { data: organization, error } = await admin
+      .from('organizations')
+      .select('parent_id')
+      .eq('id', cursor)
+      .maybeSingle()
+    if (error) throw error
+    cursor = organization ? organization.parent_id : null
+  }
+
+  return false
+}
+
 async function sendWebhook(url: string, token: string, body: unknown) {
   const response = await fetch(url, {
     method: 'POST',
@@ -105,14 +134,8 @@ Deno.serve(async (req: Request) => {
       .eq('active', true)
 
     if (membershipError) throw membershipError
-    const hasTargetMembership = Boolean(memberships && memberships.some((membership) => {
-      return membership.organization_id === body.organizationId
-    }))
-    const isSystemAdmin = Boolean(memberships && memberships.some((membership) => {
-      return membership.role === 'system_admin'
-    }))
-    if (!hasTargetMembership && !isSystemAdmin) {
-      throw new ResponseError(403, 'Nie masz aktywnego przypisania do tej jednostki.')
+    if (!memberships || !await hasScopedAccess(admin, memberships, body.organizationId)) {
+      throw new ResponseError(403, 'Nie masz aktywnego przypisania ani zakresu administracyjnego dla tej jednostki.')
     }
 
     const { data: duplicate, error: duplicateError } = await admin
