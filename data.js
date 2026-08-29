@@ -4,7 +4,7 @@
   const sourceUrl = 'https://www.erc.edu/science-research/guidelines/guidelines-2025/guidelines-2025-english/';
 
   window.RATOWNIK_DATA = {
-    version: '2.5.0',
+    version: '2.6.0',
     reviewedAt: '2026-08-29',
     quickProcedureIds: ['rko-dorosly', 'krwotok', 'porazenie-pradem', 'wypadek-kolejowy'],
     emergencyChoiceIds: [
