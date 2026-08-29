@@ -1,6 +1,6 @@
 # Ratownik PLK v2 — architektura rozwoju
 
-Stan dokumentu: 29.08.2026, aplikacja 2.5.0. Dokument opisuje kierunek techniczny; backend nie został jeszcze podłączony.
+Stan dokumentu: 29.08.2026, aplikacja 2.6.0. Kod pilota backendu i panelu wewnętrznego jest przygotowany na osobnej gałęzi; konkretny projekt Supabase i dostawcy wiadomości nie są jeszcze podłączeni.
 
 ## 1. Audyt obecnej aplikacji
 
@@ -53,6 +53,12 @@ Najprostszy do etapowego utrzymania wariant:
 6. **Edge Functions/API** — operacje uprzywilejowane: alarm, PUSH, SMS, generowanie QR, zadania cykliczne i integracje.
 7. **Dostawca PUSH oraz adapter SMS** — sekrety wyłącznie po stronie funkcji serwerowych; środowisko testowe zapisuje alarm demonstracyjny, ale niczego nie wysyła.
 8. **Dziennik audytowy** — kto, kiedy i w jakiej jednostce zmienił zasób, wykonał kontrolę lub uruchomił alarm.
+
+### Stan implementacji 2.6.0
+
+W repozytorium przygotowano katalog `internal/` z logowaniem Magic Link dla wcześniej zaproszonych kont, wyborem jednostki, rolami, dashboardem, listą ratowników i formularzem alarmu. Katalog `supabase/` zawiera schemat RLS oraz dwie Edge Functions: zapraszanie ratowników i alarmowanie.
+
+Tryb wysyłki ma bezpieczną wartość domyślną `simulation`. W tym trybie system zapisuje incydent, odbiorców, próby dostarczenia i audyt, ale nie wywołuje dostawcy PUSH ani SMS. Zmiana na produkcję jest możliwa wyłącznie przez sekret środowiska funkcji serwerowej.
 
 W przeglądarce może znajdować się jedynie klucz publikowalny. Klucz tajny/`service_role`, dane dostawcy SMS i klucze PUSH nie mogą trafić do repozytorium ani kodu klienta. Każda tabela dostępna przez Data API musi mieć RLS i jawnie minimalne uprawnienia. Operacje alarmowe powinny dodatkowo ponownie sprawdzać członkostwo i rolę po stronie funkcji serwerowej.
 
@@ -120,14 +126,14 @@ Profil użytkownika łączy `auth.users` z jednym lub kilkoma rekordami `members
 
 ## 9. Kolejność realizacji po obecnym etapie
 
-1. Zatwierdzić merytorycznie ukończony Etap 1: hierarchię Start, narzędzia w procedurach i scenariusze „Prowadź mnie”.
-2. Wykonać ręczny test instalacji, offline i kluczowych scenariuszy na reprezentatywnych urządzeniach Android i iOS oraz zatwierdzić politykę aktualizacji danych.
-3. Zatwierdzić dostawcę backendu, sposób logowania i klasyfikację danych.
-4. Utworzyć osobne środowiska `dev`, `test` i `prod`; wdrożyć Auth, strukturę organizacyjną i RLS.
-5. Przenieść demonstracyjny model apteczek, wyposażenia, kontroli i alertów terminów do chronionej bazy.
-6. Przenieść demonstracyjny model AED, komponentów, kontroli i alertów do chronionej bazy.
-7. Dodać ratowników i bezpieczne alarmy demonstracyjne, następnie PUSH/SMS.
-8. Dodać panel administracyjny, QR, raporty i pełny audyt.
+1. **Gotowe w kodzie:** hierarchia Start, narzędzia w procedurach, „Prowadź mnie”, offline części publicznej i testy mobilne.
+2. **Gotowe w kodzie pilota:** panel wewnętrzny, model jednostek i ról, ratownicy, RLS, audyt oraz alarm demonstracyjny.
+3. **Następny krok wdrożeniowy:** utworzyć osobny projekt Supabase `test`, zastosować schemat i podłączyć klucz publikowalny.
+4. Skonfigurować zaproszenia e-mail i dozwolony adres powrotu; produkcyjnie zatwierdzić Microsoft Entra ID/OIDC.
+5. Wykonać test RLS dla każdej roli oraz test alarmu w trybie `simulation`.
+6. Przenieść ewidencję apteczek, AED, kontroli i alertów terminów do chronionej bazy.
+7. Zatwierdzić bramy PUSH/SMS, retencję oraz procedurę awaryjną; dopiero wtedy włączyć tryb produkcyjny.
+8. Dodać QR, raporty, pełne zarządzanie kontrolami i rozszerzyć dziennik audytowy.
 
 ## 10. Decyzje wymagane przed backendem
 
@@ -139,7 +145,7 @@ Profil użytkownika łączy `auth.users` z jednym lub kilkoma rekordami `members
 - Jaki dostawca SMS/PUSH jest dopuszczony i jaki ma być limit, retry oraz retencja logów?
 - Czy alarm ratowników jest tylko wsparciem, czy elementem formalnej procedury operacyjnej?
 
-Dopiero po tych decyzjach należy tworzyć produkcyjny schemat bazy, polityki RLS oraz integracje wysyłkowe.
+Przygotowany schemat służy środowisku deweloperskiemu/testowemu i nie zawiera danych rzeczywistych. Dopiero po tych decyzjach wolno wdrożyć go produkcyjnie, zasilić danymi pracowników oraz włączyć integracje wysyłkowe.
 
 ## 11. Źródła techniczne
 
