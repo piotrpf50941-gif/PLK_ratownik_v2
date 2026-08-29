@@ -12,7 +12,8 @@ const requiredFiles = [
   'supabase/internal-platform.sql',
   'supabase/functions/_shared/common.ts',
   'supabase/functions/dispatch-responder-alert/index.ts',
-  'supabase/functions/manage-responder/index.ts'
+  'supabase/functions/manage-responder/index.ts',
+  'supabase/functions/manage-push-subscription/index.ts'
 ];
 
 for (const path of requiredFiles) {
@@ -26,6 +27,7 @@ const example = readFileSync('internal/config.example.js', 'utf8');
 const sql = readFileSync('supabase/internal-platform.sql', 'utf8');
 const dispatcher = readFileSync('supabase/functions/dispatch-responder-alert/index.ts', 'utf8');
 const manager = readFileSync('supabase/functions/manage-responder/index.ts', 'utf8');
+const pushManager = readFileSync('supabase/functions/manage-push-subscription/index.ts', 'utf8');
 const common = readFileSync('supabase/functions/_shared/common.ts', 'utf8');
 const sw = readFileSync('sw.js', 'utf8');
 
@@ -50,12 +52,15 @@ assert.match(config, /supabaseUrl:\s*''/);
 assert.match(config, /supabasePublishableKey:\s*''/);
 assert.doesNotMatch(config, /supabasePublishableKey:\s*'(sb_secret_|eyJ[A-Za-z0-9_-]{30,})/);
 assert.match(example, /sb_publishable_TUTAJ_KLUCZ_PUBLICZNY/);
+assert.match(config, /vapidPublicKey:\s*''/);
+assert.match(example, /TUTAJ_PUBLICZNY_KLUCZ_VAPID/);
 assert.doesNotMatch(app, /localStorage/);
 assert.doesNotMatch(app + html, /\+48[0-9]{7,}/);
 assert.match(app, /shouldCreateUser:\s*false/);
 assert.match(app, /flowType:\s*'pkce'/);
 assert.match(app, /functions\.invoke\('dispatch-responder-alert'/);
 assert.match(app, /functions\.invoke\('manage-responder'/);
+assert.match(app, /functions\.invoke\('manage-push-subscription'/);
 
 const rlsTables = [
   'organizations',
@@ -76,6 +81,7 @@ assert.match(sql, /revoke all on private\.responder_contacts from public, anon, 
 assert.match(sql, /revoke all on private\.push_subscriptions from public, anon, authenticated;/);
 assert.match(sql, /grant execute on function public\.get_alert_recipients_for_dispatch\(uuid\) to service_role;/);
 assert.match(sql, /grant execute on function public\.register_invited_responder\(uuid, uuid, text, text, text\[\], uuid\) to service_role;/);
+assert.match(sql, /grant execute on function public\.upsert_push_subscription\(uuid, text, text, text\) to service_role;/);
 assert.match(sql, /private\.is_system_admin\(\)\s+or role in \('employee', 'responder'\)/);
 assert.equal((sql.match(/security definer/gi) || []).length >= 6, true);
 assert.equal((sql.match(/set search_path = ''/g) || []).length >= 8, true);
@@ -91,11 +97,16 @@ assert.match(dispatcher, /alarm_dispatched/);
 assert.match(dispatcher, /rate_limited/);
 assert.match(manager, /inviteUserByEmail/);
 assert.match(manager, /register_invited_responder/);
-assert.doesNotMatch(dispatcher + manager + common, /sb_secret_[A-Za-z0-9_-]+/);
-assert.doesNotMatch(dispatcher + manager + common, /service_role\s*[:=]\s*['"][A-Za-z0-9]/i);
+assert.match(pushManager, /upsert_push_subscription/);
+assert.match(pushManager, /eq\('user_id', user\.id\)/);
+assert.doesNotMatch(dispatcher + manager + pushManager + common, /sb_secret_[A-Za-z0-9_-]+/);
+assert.doesNotMatch(dispatcher + manager + pushManager + common, /service_role\s*[:=]\s*['"][A-Za-z0-9]/i);
 
 assert.match(sw, /PUBLIC_NAVIGATION_PATHS/);
 assert.match(sw, /if \(!PUBLIC_NAVIGATION_PATHS\.has\(url\.pathname\)\) return;/);
 assert.doesNotMatch(sw, /internal\/index\.html/);
+assert.match(sw, /addEventListener\('push'/);
+assert.match(sw, /safeNotificationUrl/);
+assert.match(sw, /showNotification/);
 
 console.log('Test panelu wewnętrznego: OK (' + requiredFiles.length + ' plików, ' + usedIds.length + ' odwołań DOM)');
