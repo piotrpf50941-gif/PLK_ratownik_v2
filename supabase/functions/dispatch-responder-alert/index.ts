@@ -100,13 +100,18 @@ Deno.serve(async (req: Request) => {
 
     const { data: memberships, error: membershipError } = await admin
       .from('memberships')
-      .select('id,role')
+      .select('id,organization_id,role')
       .eq('user_id', user.id)
-      .eq('organization_id', body.organizationId)
       .eq('active', true)
 
     if (membershipError) throw membershipError
-    if (!memberships || memberships.length === 0) {
+    const hasTargetMembership = Boolean(memberships && memberships.some((membership) => {
+      return membership.organization_id === body.organizationId
+    }))
+    const isSystemAdmin = Boolean(memberships && memberships.some((membership) => {
+      return membership.role === 'system_admin'
+    }))
+    if (!hasTargetMembership && !isSystemAdmin) {
       throw new ResponseError(403, 'Nie masz aktywnego przypisania do tej jednostki.')
     }
 
