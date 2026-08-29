@@ -574,7 +574,7 @@ returns uuid
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   new_membership_id uuid;
 begin
@@ -689,7 +689,7 @@ commit;
 
   return new_membership_id;
 end;
-$;
+$$;
 
 revoke all on function public.get_alert_recipients_for_dispatch(uuid) from public, anon, authenticated;
 revoke all on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) from public, anon, authenticated;
