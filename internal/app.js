@@ -156,12 +156,48 @@
     return order.find(function (role) { return roles.indexOf(role) >= 0; }) || 'employee';
   }
 
+  function responderMembershipForCurrentOrganization() {
+    return memberships.find(function (membership) {
+      return membership.active &&
+        membership.role === 'responder' &&
+        membership.organization_id === currentOrganizationId;
+    }) || null;
+  }
+
+  function updatePushInterface() {
+    var membership = responderMembershipForCurrentOrganization();
+    var button = $('enablePushButton');
+    var status = $('pushStatus');
+    button.hidden = !membership;
+    if (!membership) {
+      status.textContent = 'dostępne dla ratownika';
+      return;
+    }
+    if (!text(CONFIG.vapidPublicKey).trim()) {
+      button.disabled = true;
+      status.textContent = 'brak klucza VAPID';
+      return;
+    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      button.disabled = true;
+      status.textContent = 'telefon nie obsługuje PUSH';
+      return;
+    }
+    button.disabled = false;
+    status.textContent = Notification.permission === 'granted'
+      ? 'włączone w przeglądarce'
+      : Notification.permission === 'denied'
+        ? 'zablokowane w ustawieniach'
+        : 'niewłączone';
+  }
+
   function updateRoleInterface() {
     var role = highestRole();
     $('roleBadge').textContent = roleLabel(role);
     document.querySelectorAll('.admin-only').forEach(function (element) {
       element.hidden = !canManageCurrentOrganization();
     });
+    updatePushInterface();
   }
 
   function clearProtectedInterface() {
@@ -527,6 +563,66 @@
     });
   }
 
+  function vapidKeyBytes(value) {
+    var normalized = text(value).trim().replace(/-/g, '+').replace(/_/g, '/');
+    var padding = '='.repeat((4 - normalized.length % 4) % 4);
+    var decoded = window.atob(normalized + padding);
+    return Uint8Array.from(decoded, function (character) { return character.charCodeAt(0); });
+  }
+
+  async function enablePushNotifications() {
+    var membership = responderMembershipForCurrentOrganization();
+    if (!membership) {
+      showToast('Powiadomienia PUSH może włączyć aktywny ratownik w swojej jednostce.');
+      return;
+    }
+    if (!navigator.onLine) {
+      showToast('Włączenie PUSH wymaga połączenia z internetem.');
+      return;
+    }
+
+    var button = $('enablePushButton');
+    button.disabled = true;
+    $('pushStatus').textContent = 'konfiguruję…';
+    try {
+      var permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        throw new Error('Nie udzielono zgody na powiadomienia.');
+      }
+
+      var scopeUrl = new URL('../', window.location.href).href;
+      var registration = await navigator.serviceWorker.getRegistration(scopeUrl);
+      if (!registration) {
+        registration = await navigator.serviceWorker.register('../sw.js', { scope: '../' });
+      }
+
+      var subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidKeyBytes(CONFIG.vapidPublicKey)
+        });
+      }
+
+      var result = await client.functions.invoke('manage-push-subscription', {
+        body: {
+          membershipId: membership.id,
+          subscription: subscription.toJSON()
+        }
+      });
+      if (result.error) throw result.error;
+      $('pushStatus').textContent = 'włączone i zapisane';
+      button.textContent = 'PUSH WŁĄCZONE';
+      showToast('Ten telefon będzie mógł otrzymywać alarmy PUSH dla wybranej jednostki.');
+    } catch (error) {
+      $('pushStatus').textContent = Notification.permission === 'denied'
+        ? 'zablokowane w ustawieniach'
+        : 'nie udało się włączyć';
+      showToast('PUSH nie został włączony: ' + errorMessage(error));
+      button.disabled = false;
+    }
+  }
+
   function idempotencyKey() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
       return window.crypto.randomUUID();
@@ -570,6 +666,7 @@
     $('signOutButton').addEventListener('click', signOut);
     $('deniedSignOutButton').addEventListener('click', signOut);
     $('refreshButton').addEventListener('click', refreshAll);
+    $('enablePushButton').addEventListener('click', enablePushNotifications);
     $('organizationSelect').addEventListener('change', function (event) {
       currentOrganizationId = event.target.value;
       window.sessionStorage.setItem('ratownik_internal_org', currentOrganizationId);
