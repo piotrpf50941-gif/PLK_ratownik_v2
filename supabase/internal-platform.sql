@@ -595,6 +595,7 @@ revoke all on function public.upsert_responder_contact(uuid, text, boolean) from
 grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
 grant execute on function public.upsert_responder_contact(uuid, text, boolean) to service_role;
 grant execute on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) to service_role;
+grant execute on function public.upsert_push_subscription(uuid, text, text, text) to service_role;
 
 commit;
 
@@ -691,7 +692,61 @@ commit;
 end;
 $$;
 
+create or replace function public.upsert_push_subscription(
+  target_membership_id uuid,
+  target_endpoint text,
+  target_p256dh text,
+  target_auth_secret text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  subscription_id uuid;
+begin
+  if not exists (
+    select 1 from public.memberships
+    where id = target_membership_id
+      and role = 'responder'
+      and active
+  ) then
+    raise exception 'active responder membership not found';
+  end if;
+  if char_length(target_endpoint) not between 10 and 2048
+    or char_length(target_p256dh) not between 10 and 512
+    or char_length(target_auth_secret) not between 6 and 512 then
+    raise exception 'invalid push subscription';
+  end if;
+
+  insert into private.push_subscriptions (
+    membership_id,
+    endpoint,
+    p256dh,
+    auth_secret,
+    active
+  )
+  values (
+    target_membership_id,
+    target_endpoint,
+    target_p256dh,
+    target_auth_secret,
+    true
+  )
+  on conflict (membership_id, endpoint) do update
+  set p256dh = excluded.p256dh,
+      auth_secret = excluded.auth_secret,
+      active = true,
+      last_used_at = now()
+  returning id into subscription_id;
+
+  return subscription_id;
+end;
+$$;
+
 revoke all on function public.get_alert_recipients_for_dispatch(uuid) from public, anon, authenticated;
+revoke all on function public.upsert_push_subscription(uuid, text, text, text) from public, anon, authenticated;
 revoke all on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) from public, anon, authenticated;
 revoke all on function public.upsert_responder_contact(uuid, text, boolean) from public, anon, authenticated;
 grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
