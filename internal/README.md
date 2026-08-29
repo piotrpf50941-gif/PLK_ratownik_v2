@@ -11,6 +11,7 @@ Ten katalog zawiera uwierzytelnioną część aplikacji: jednostki, ratowników,
 - zapraszanie ratownika przez chronioną Edge Function;
 - alarm z dwustopniowym potwierdzeniem, GPS i kluczem idempotencji;
 - tryb simulation, który zapisuje alarm i audyt, ale niczego nie wysyła;
+- rejestracja urządzenia PUSH dostępna wyłącznie dla zalogowanego ratownika;
 - adaptery PUSH/SMS uruchamiane wyłącznie po stronie funkcji serwerowej;
 - brak danych osobowych i sekretów w repozytorium.
 
@@ -77,6 +78,7 @@ Skopiuj internal/config.example.js do internal/config.js i wpisz:
 
 - adres projektu https://...supabase.co;
 - wyłącznie klucz sb_publishable_...;
+- publiczny klucz VAPID zgodny z zatwierdzoną bramą PUSH;
 - environment: test;
 - notificationMode: simulation.
 
@@ -90,8 +92,11 @@ Najpierw ustaw tryb bez wysyłki:
     supabase secrets set INTERNAL_APP_URL=https://TWOJ-ADRES/internal/
     supabase functions deploy dispatch-responder-alert
     supabase functions deploy manage-responder
+    supabase functions deploy manage-push-subscription
 
-Funkcje mają włączone verify_jwt. Dodatkowo same ponownie sprawdzają użytkownika, rolę i zakres jednostki.
+Funkcje mają włączone verify_jwt. Ratownik rejestruje subskrypcję PUSH przyciskiem WŁĄCZ PUSH; endpoint i klucze subskrypcji trafiają do prywatnego schematu bazy, a nie do publicznego API.
+
+Funkcje Dodatkowo same ponownie sprawdzają użytkownika, rolę i zakres jednostki.
 
 ## 6. Test alarmu bez SMS
 
