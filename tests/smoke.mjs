@@ -402,7 +402,7 @@ assert.match(elements.get('resourceList').innerHTML, /Pokaż apteczkę na mapie/
 elements.get('resourceTabs').dispatch('click', resourceTabs[2]);
 assert.match(elements.get('resourceList').innerHTML, /Ratownicy i alarmowanie/);
 assert.match(elements.get('resourceList').innerHTML, /CHRONIONE/);
-assert.match(elements.get('resourceList').innerHTML, /href="internal/"/);
+assert.match(elements.get('resourceList').innerHTML, /href="internal[/]"/);
 assert.equal(elements.get('resourceSearch').parentResourceSearch.hidden, true);
 assert.equal(elements.get('resourceLocationButton').hidden, true);
 const invalidResource = new FakeElement('', { dataset: { resource: 'phones' } });
