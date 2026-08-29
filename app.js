@@ -4,6 +4,7 @@
   const DATA = window.RATOWNIK_DATA;
   const STORAGE_KEY = 'ratownik_plk_v2_state';
   const LAST_ONLINE_KEY = 'ratownik_plk_v2_last_online';
+  const STATE_SCHEMA_VERSION = 2;
   const VALID_SCREENS = ['home', 'procedures', 'resources', 'tools'];
   const VALID_ENTITIES = ['aeds', 'kits'];
   const BREATH_PREP_SECONDS = 2;
@@ -58,6 +59,31 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === 'boolean') return value;
+    if (value === 'true' || value === '1' || value === 1 || value === 'on') return true;
+    if (value === 'false' || value === '0' || value === 0 || value === '') return false;
+    return Boolean(fallback);
+  }
+
+  function normalizeDate(value) {
+    const date = cleanText(value, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+    const parsed = new Date(date + 'T00:00:00Z');
+    return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date ? '' : date;
+  }
+
+  function normalizeKitItem(item, index) {
+    const raw = item && typeof item === 'object' ? item : {};
+    return {
+      id: cleanText(raw.id, 80) || 'item-' + index,
+      name: cleanText(raw.name, 120) || 'Element wyposażenia',
+      quantity: Math.max(0, Math.floor(safeNumber(raw.quantity, 0))),
+      minimum: Math.max(0, Math.floor(safeNumber(raw.minimum, 0))),
+      expiry: normalizeDate(raw.expiry)
+    };
+  }
+
   function normalizeAed(item, index) {
     const raw = item && typeof item === 'object' ? item : {};
     return {
@@ -65,7 +91,17 @@
       name: cleanText(raw.name, 120) || 'AED',
       location: cleanText(raw.location, 240),
       lat: safeNumber(raw.lat, null),
-      lon: safeNumber(raw.lon, null)
+      lon: safeNumber(raw.lon, null),
+      available: normalizeBoolean(raw.available, true),
+      access: cleanText(raw.access, 180),
+      manufacturer: cleanText(raw.manufacturer, 120),
+      model: cleanText(raw.model, 120),
+      serialNumber: cleanText(raw.serialNumber, 120),
+      lastInspection: normalizeDate(raw.lastInspection),
+      nextInspection: normalizeDate(raw.nextInspection),
+      electrodesExpiry: normalizeDate(raw.electrodesExpiry),
+      batteryExpiry: normalizeDate(raw.batteryExpiry),
+      notes: cleanText(raw.notes, 500)
     };
   }
 
@@ -75,14 +111,30 @@
       id: cleanText(raw.id, 80) || 'kit-' + Date.now() + '-' + index,
       name: cleanText(raw.name, 120) || 'Apteczka',
       location: cleanText(raw.location, 240),
+      lat: safeNumber(raw.lat, null),
+      lon: safeNumber(raw.lon, null),
       type: cleanText(raw.type, 80) || 'inna',
-      contents: cleanText(raw.contents, 700)
+      available: normalizeBoolean(raw.available, true),
+      lastInspection: normalizeDate(raw.lastInspection),
+      nextInspection: normalizeDate(raw.nextInspection),
+      contents: cleanText(raw.contents, 700),
+      items: (Array.isArray(raw.items) ? raw.items : []).slice(0, 200).map(normalizeKitItem)
     };
   }
 
   function normalizeState(value) {
     const defaults = clone(DATA.defaultState);
     const raw = value && typeof value === 'object' ? value : {};
+    const storedSchemaVersion = Math.max(1, Math.floor(safeNumber(raw.schemaVersion, 1)));
+    const mergeLegacyDemo = function (items, entity) {
+      if (storedSchemaVersion >= STATE_SCHEMA_VERSION) return items;
+      return items.map(function (item) {
+        const demo = defaults[entity].find(function (candidate) { return candidate.id === item.id; });
+        return demo ? Object.assign({}, clone(demo), item) : item;
+      });
+    };
+    const rawAeds = Array.isArray(raw.aeds) ? raw.aeds : defaults.aeds;
+    const rawKits = Array.isArray(raw.kits) ? raw.kits : defaults.kits;
     const location = raw.location && typeof raw.location === 'object' ? {
       lat: safeNumber(raw.location.lat, null),
       lon: safeNumber(raw.location.lon, null),
@@ -91,8 +143,9 @@
     } : null;
 
     return {
-      aeds: (Array.isArray(raw.aeds) ? raw.aeds : defaults.aeds).slice(0, 1000).map(normalizeAed),
-      kits: (Array.isArray(raw.kits) ? raw.kits : defaults.kits).slice(0, 1000).map(normalizeKit),
+      schemaVersion: STATE_SCHEMA_VERSION,
+      aeds: mergeLegacyDemo(rawAeds, 'aeds').slice(0, 1000).map(normalizeAed),
+      kits: mergeLegacyDemo(rawKits, 'kits').slice(0, 1000).map(normalizeKit),
       location: location && location.lat !== null && location.lon !== null ? location : null,
       preferences: {
         darkMode: Boolean(raw.preferences && raw.preferences.darkMode),
@@ -120,6 +173,83 @@
 
   function normalizeSearch(value) {
     return cleanText(value, 500).toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function formatIsoDate(value) {
+    const date = normalizeDate(value);
+    if (!date) return 'brak daty';
+    const parts = date.split('-');
+    return parts[2] + '.' + parts[1] + '.' + parts[0];
+  }
+
+  function daysUntil(value) {
+    const date = normalizeDate(value);
+    if (!date) return null;
+    const now = new Date();
+    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.ceil((Date.parse(date + 'T00:00:00Z') - todayUtc) / 86400000);
+  }
+
+  function deadlineAlert(label, value, required) {
+    const date = normalizeDate(value);
+    if (!date) return required ? { level: 'warning', text: label + ': brak terminu.' } : null;
+    const remaining = daysUntil(date);
+    const shownDate = formatIsoDate(date);
+    if (remaining < 0) return { level: 'critical', text: label + ': termin minął (' + shownDate + ').' };
+    if (remaining === 0) return { level: 'warning', text: label + ': termin przypada dzisiaj.' };
+    if (remaining <= 30) return { level: 'warning', text: label + ': termin do 30 dni (' + shownDate + ').' };
+    if (remaining <= 60) return { level: 'warning', text: label + ': termin do 60 dni (' + shownDate + ').' };
+    if (remaining <= 90) return { level: 'warning', text: label + ': termin do 90 dni (' + shownDate + ').' };
+    return null;
+  }
+
+  function readinessResult(alerts, unavailable) {
+    const level = alerts.some(function (alert) { return alert.level === 'critical'; }) ? 'critical' : alerts.length ? 'warning' : 'ok';
+    const labels = {
+      ok: 'GOTOWY',
+      warning: 'SPRAWDŹ',
+      critical: unavailable ? 'NIEDOSTĘPNY' : 'NIEGOTOWY'
+    };
+    return { level: level, label: labels[level], alerts: alerts };
+  }
+
+  function evaluateAedReadiness(item) {
+    const alerts = [];
+    if (!item.available) alerts.push({ level: 'critical', text: 'Urządzenie oznaczono jako niedostępne.' });
+    [
+      deadlineAlert('Następna kontrola', item.nextInspection, true),
+      deadlineAlert('Elektrody', item.electrodesExpiry, true),
+      deadlineAlert('Bateria', item.batteryExpiry, true)
+    ].forEach(function (alert) { if (alert) alerts.push(alert); });
+    return readinessResult(alerts, !item.available);
+  }
+
+  function evaluateKitReadiness(item) {
+    const alerts = [];
+    if (!item.available) alerts.push({ level: 'critical', text: 'Apteczkę oznaczono jako niedostępną.' });
+    const inspectionAlert = deadlineAlert('Następna kontrola', item.nextInspection, true);
+    if (inspectionAlert) alerts.push(inspectionAlert);
+    if (!item.items.length) {
+      alerts.push({ level: 'warning', text: 'Brak szczegółowej ewidencji wyposażenia.' });
+    }
+    item.items.forEach(function (inventoryItem) {
+      if (inventoryItem.quantity < inventoryItem.minimum) {
+        alerts.push({ level: 'critical', text: inventoryItem.name + ': stan ' + inventoryItem.quantity + ', minimum ' + inventoryItem.minimum + '.' });
+      } else if (inventoryItem.quantity === inventoryItem.minimum && inventoryItem.minimum > 0) {
+        alerts.push({ level: 'warning', text: inventoryItem.name + ': osiągnięto stan minimalny (' + inventoryItem.minimum + ').' });
+      }
+      const expiryAlert = deadlineAlert(inventoryItem.name + ' — ważność', inventoryItem.expiry, false);
+      if (expiryAlert) alerts.push(expiryAlert);
+    });
+    return readinessResult(alerts, !item.available);
+  }
+
+  function getReadiness(entity, item) {
+    return entity === 'aeds' ? evaluateAedReadiness(item) : evaluateKitReadiness(item);
+  }
+
+  function renderReadinessBadge(readiness) {
+    return '<span class="resource-status ' + readiness.level + '"><i aria-hidden="true"></i>' + esc(readiness.label) + '</span>';
   }
 
   function showToast(message) {
@@ -324,6 +454,17 @@
     $('procedureContent').scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function renderGuideRkoContent(procedureId, stepIndex, buttonLabel) {
+    return [
+      '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>',
+      '<section class="procedure-tool-panel metronome" data-metronome-panel>',
+      '<div><span class="procedure-tool-value">Metronom RKO 110/min</span><small data-metronome-status>Gotowy do uruchomienia.</small></div>',
+      '<button class="procedure-tool-action" type="button" data-procedure-tool="metronome">♥ Uruchom metronom RKO</button>',
+      '</section>',
+      '<button class="guide-answer danger" type="button" data-procedure="', esc(procedureId), '" data-procedure-step="', stepIndex, '">', esc(buttonLabel), '</button>'
+    ].join('');
+  }
+
   function renderGuide(stepName) {
     guideStep = stepName || 'safety';
     let title = 'Co mam teraz zrobić?';
@@ -376,17 +517,23 @@
         '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>',
         '<button class="guide-answer safe" type="button" data-procedure="pozycja-boczna" data-procedure-step="2">Przejdź do ułożenia i monitorowania</button>'
       ].join('');
+    } else if (guideStep === 'rko-age') {
+      title = 'Wybierz właściwe prowadzenie RKO';
+      prompt = 'Instrukcje różnią się zależnie od wieku poszkodowanego. Wybierz jedną odpowiedź.';
+      content = [
+        '<div class="guide-actions">',
+        '<button class="guide-answer danger" type="button" data-guide-action="rko-adult">Dorosły</button>',
+        '<button class="guide-answer danger" type="button" data-guide-action="rko-child">Dziecko</button>',
+        '</div>'
+      ].join('');
     } else if (guideStep === 'rko') {
       title = 'Wezwij 112 i rozpocznij RKO';
       prompt = 'Włącz głośnik, poproś o AED i rozpocznij uciśnięcia. Metronom możesz uruchomić tutaj.';
-      content = [
-        '<a class="procedure-tool-action call" href="tel:112"><span aria-hidden="true">☎</span><strong>Zadzwoń pod 112</strong></a>',
-        '<section class="procedure-tool-panel metronome" data-metronome-panel>',
-        '<div><span class="procedure-tool-value">Metronom RKO 110/min</span><small data-metronome-status>Gotowy do uruchomienia.</small></div>',
-        '<button class="procedure-tool-action" type="button" data-procedure-tool="metronome">♥ Uruchom metronom RKO</button>',
-        '</section>',
-        '<button class="guide-answer danger" type="button" data-procedure="rko-dorosly" data-procedure-step="4">Otwórz prowadzenie RKO i AED</button>'
-      ].join('');
+      content = renderGuideRkoContent('rko-dorosly', 4, 'Otwórz prowadzenie RKO dorosłego i AED');
+    } else if (guideStep === 'rko-child') {
+      title = 'Wezwij 112 i rozpocznij RKO dziecka';
+      prompt = 'Włącz głośnik i postępuj według instrukcji dla dziecka. Metronom możesz uruchomić tutaj.';
+      content = renderGuideRkoContent('rko-dziecko', 3, 'Otwórz prowadzenie RKO dziecka');
     } else {
       title = 'Co się wydarzyło?';
       prompt = 'Wybierz najlepiej pasującą sytuację. Każda procedura poprowadzi Cię krok po kroku.';
@@ -416,7 +563,9 @@
     else if (action === 'responds') renderGuide('incident');
     else if (action === 'unresponsive') renderGuide('breathing');
     else if (action === 'breathing-normal') renderGuide('recovery');
-    else if (action === 'breathing-abnormal') renderGuide('rko');
+    else if (action === 'breathing-abnormal') renderGuide('rko-age');
+    else if (action === 'rko-adult') renderGuide('rko');
+    else if (action === 'rko-child') renderGuide('rko-child');
   }
 
   function updateLocationSummary() {
@@ -476,6 +625,33 @@
     $('kitCount').textContent = state.kits.length;
     $('dataAedCount').textContent = state.aeds.length;
     $('dataKitCount').textContent = state.kits.length;
+    renderReadinessDashboard();
+  }
+
+  function renderReadinessDashboard() {
+    if (!$('readinessAlertList')) return;
+    const aedResults = state.aeds.map(function (item) { return { item: item, readiness: evaluateAedReadiness(item), entity: 'AED' }; });
+    const kitResults = state.kits.map(function (item) { return { item: item, readiness: evaluateKitReadiness(item), entity: 'Apteczka' }; });
+    const allResults = aedResults.concat(kitResults);
+    const needsAttention = allResults.filter(function (entry) { return entry.readiness.level !== 'ok'; }).sort(function (a, b) {
+      const priority = { critical: 0, warning: 1, ok: 2 };
+      return priority[a.readiness.level] - priority[b.readiness.level];
+    });
+
+    $('readinessAedOk').textContent = aedResults.filter(function (entry) { return entry.readiness.level === 'ok'; }).length;
+    $('readinessAedAttention').textContent = aedResults.filter(function (entry) { return entry.readiness.level !== 'ok'; }).length;
+    $('readinessKitOk').textContent = kitResults.filter(function (entry) { return entry.readiness.level === 'ok'; }).length;
+    $('readinessKitAttention').textContent = kitResults.filter(function (entry) { return entry.readiness.level !== 'ok'; }).length;
+    $('readinessAlertCount').textContent = needsAttention.length;
+
+    $('readinessAlertList').innerHTML = needsAttention.length ? needsAttention.map(function (entry) {
+      return [
+        '<article class="readiness-alert ', entry.readiness.level, '">',
+        '<div><span>', esc(entry.entity), '</span><strong>', esc(entry.item.name), '</strong></div>',
+        '<ul>', entry.readiness.alerts.slice(0, 3).map(function (alert) { return '<li>' + esc(alert.text) + '</li>'; }).join(''), '</ul>',
+        '</article>'
+      ].join('');
+    }).join('') : '<p class="empty-state compact">Brak alertów w danych demonstracyjnych.</p>';
   }
 
   function renderResources() {
@@ -483,7 +659,7 @@
     const query = normalizeSearch($('resourceSearch').value);
     let items = state[selectedResource].slice();
 
-    if (selectedResource === 'aeds' && state.location) {
+    if (state.location) {
       items = items.map(function (item) {
         const distance = item.lat !== null && item.lon !== null ? haversineDistance(state.location.lat, state.location.lon, item.lat, item.lon) : null;
         return Object.assign({}, item, { distance: distance });
@@ -495,14 +671,15 @@
     }
 
     items = items.filter(function (item) {
-      const haystack = normalizeSearch(Object.keys(item).map(function (key) { return item[key]; }).join(' '));
+      const inventory = Array.isArray(item.items) ? item.items.map(function (inventoryItem) { return inventoryItem.name; }).join(' ') : '';
+      const haystack = normalizeSearch(Object.keys(item).map(function (key) { return typeof item[key] === 'object' ? '' : item[key]; }).join(' ') + ' ' + inventory);
       return !query || haystack.indexOf(query) >= 0;
     });
 
     if (selectedResource === 'aeds') {
       $('resourceHint').textContent = state.location ? 'AED są posortowane według przybliżonej odległości w linii prostej.' : 'Włącz GPS, aby posortować AED według odległości.';
     } else if (selectedResource === 'kits') {
-      $('resourceHint').textContent = 'Sprawdź lokalizację oraz wyposażenie apteczki przed zdarzeniem.';
+      $('resourceHint').textContent = state.location ? 'Apteczki są posortowane według przybliżonej odległości w linii prostej.' : 'Włącz GPS, aby posortować apteczki według odległości.';
     }
 
     if (!items.length) {
@@ -517,12 +694,14 @@
   }
 
   function renderAedCard(item) {
+    const readiness = evaluateAedReadiness(item);
     const hasCoordinates = item.lat !== null && item.lon !== null;
     const mapUrl = hasCoordinates ? 'https://www.openstreetmap.org/?mlat=' + encodeURIComponent(item.lat) + '&mlon=' + encodeURIComponent(item.lon) + '#map=18/' + encodeURIComponent(item.lat) + '/' + encodeURIComponent(item.lon) : '';
     return [
-      '<article class="resource-card">',
+      '<article class="resource-card ', readiness.level, '">',
       '<span class="resource-icon aed" aria-hidden="true">⚡</span>',
-      '<div class="resource-copy"><strong>', esc(item.name), '</strong><span>', esc(item.location || 'Brak opisu lokalizacji'), '</span>',
+      '<div class="resource-copy"><div class="resource-title-line"><strong>', esc(item.name), '</strong>', renderReadinessBadge(readiness), '</div><span>', esc(item.location || 'Brak opisu lokalizacji'), '</span>',
+      item.access ? '<small class="resource-access">' + esc(item.access) + '</small>' : '',
       item.distance !== null && item.distance !== undefined ? '<small>Około ' + esc(formatDistance(item.distance)) + ' w linii prostej</small>' : '',
       '</div>',
       '<div class="resource-actions">',
@@ -532,11 +711,16 @@
   }
 
   function renderKitCard(item) {
+    const readiness = evaluateKitReadiness(item);
+    const hasCoordinates = item.lat !== null && item.lon !== null;
+    const mapUrl = hasCoordinates ? 'https://www.openstreetmap.org/?mlat=' + encodeURIComponent(item.lat) + '&mlon=' + encodeURIComponent(item.lon) + '#map=18/' + encodeURIComponent(item.lat) + '/' + encodeURIComponent(item.lon) : '';
     return [
-      '<article class="resource-card">',
+      '<article class="resource-card ', readiness.level, '">',
       '<span class="resource-icon kit" aria-hidden="true">✚</span>',
-      '<div class="resource-copy"><strong>', esc(item.name), '</strong><span>', esc(item.location || 'Brak opisu lokalizacji'), '</span><small>', esc(item.type), item.contents ? ' · ' + esc(item.contents) : '', '</small></div>',
-      '<div class="resource-actions"></div>',
+      '<div class="resource-copy"><div class="resource-title-line"><strong>', esc(item.name), '</strong>', renderReadinessBadge(readiness), '</div><span>', esc(item.location || 'Brak opisu lokalizacji'), '</span><small>', esc(item.type), item.distance !== null && item.distance !== undefined ? ' · około ' + esc(formatDistance(item.distance)) : '', '</small></div>',
+      '<div class="resource-actions">',
+      hasCoordinates ? '<a class="resource-action" href="' + esc(mapUrl) + '" target="_blank" rel="noopener noreferrer" data-online-required aria-label="Pokaż apteczkę na mapie">⌖</a>' : '',
+      '</div>',
       '</article>'
     ].join('');
   }
@@ -902,29 +1086,60 @@
     syncTimeMarks();
   }
 
+  function parseInventoryRows(value) {
+    return String(value == null ? '' : value).split(/\r?\n/).slice(0, 200).map(function (line, index) {
+      const parts = line.split('|').map(function (part) { return part.trim(); });
+      if (!parts[0]) return null;
+      return normalizeKitItem({
+        id: 'item-' + index,
+        name: parts[0],
+        quantity: parts[1],
+        minimum: parts[2],
+        expiry: parts[3]
+      }, index);
+    }).filter(Boolean);
+  }
+
   function renderEntityForm() {
     let fields = '';
     if (selectedEntity === 'aeds') {
       fields = [
         '<label><span>Nazwa AED</span><input name="name" required maxlength="120" placeholder="np. AED — portiernia"></label>',
         '<label><span>Lokalizacja</span><input name="location" required maxlength="240" placeholder="budynek, piętro, punkt orientacyjny"></label>',
+        '<label><span>Dostępność</span><select name="available"><option value="true">Dostępny</option><option value="false">Niedostępny</option></select></label>',
+        '<label><span>Zasady dostępu</span><input name="access" maxlength="180" placeholder="np. dostęp 24/7"></label>',
+        '<label><span>Producent</span><input name="manufacturer" maxlength="120" placeholder="dane demonstracyjne"></label>',
+        '<label><span>Model</span><input name="model" maxlength="120"></label>',
+        '<label><span>Numer seryjny</span><input name="serialNumber" maxlength="120" placeholder="bez danych osobowych"></label>',
+        '<label><span>Ostatnia kontrola</span><input name="lastInspection" type="date"></label>',
+        '<label><span>Następna kontrola</span><input name="nextInspection" type="date"></label>',
+        '<label><span>Ważność elektrod</span><input name="electrodesExpiry" type="date"></label>',
+        '<label><span>Termin baterii</span><input name="batteryExpiry" type="date"></label>',
         '<label><span>Szerokość GPS</span><input name="lat" type="number" step="0.000001" min="-90" max="90" placeholder="52.402000"></label>',
-        '<label><span>Długość GPS</span><input name="lon" type="number" step="0.000001" min="-180" max="180" placeholder="16.949000"></label>'
+        '<label><span>Długość GPS</span><input name="lon" type="number" step="0.000001" min="-180" max="180" placeholder="16.949000"></label>',
+        '<label class="wide"><span>Uwagi techniczne</span><textarea name="notes" rows="2" maxlength="500" placeholder="Nie wpisuj danych osobowych."></textarea></label>'
       ].join('');
     } else if (selectedEntity === 'kits') {
       fields = [
         '<label><span>Nazwa apteczki</span><input name="name" required maxlength="120" placeholder="np. Apteczka — hala 2"></label>',
         '<label><span>Rodzaj</span><select name="type"><option>zakładowa</option><option>samochodowa</option><option>terenowa</option><option>inna</option></select></label>',
+        '<label><span>Dostępność</span><select name="available"><option value="true">Dostępna</option><option value="false">Niedostępna</option></select></label>',
+        '<label><span>Ostatnia kontrola</span><input name="lastInspection" type="date"></label>',
+        '<label><span>Następna kontrola</span><input name="nextInspection" type="date"></label>',
+        '<label><span>Szerokość GPS</span><input name="lat" type="number" step="0.000001" min="-90" max="90" placeholder="52.402000"></label>',
+        '<label><span>Długość GPS</span><input name="lon" type="number" step="0.000001" min="-180" max="180" placeholder="16.949000"></label>',
         '<label class="wide"><span>Lokalizacja</span><input name="location" required maxlength="240" placeholder="budynek, pomieszczenie, pojazd"></label>',
-        '<label class="wide"><span>Najważniejsze wyposażenie</span><textarea name="contents" rows="3" maxlength="700" placeholder="opatrunki, rękawiczki, koc termiczny…"></textarea></label>'
+        '<label class="wide"><span>Krótki opis wyposażenia</span><textarea name="contents" rows="2" maxlength="700" placeholder="opatrunki, rękawiczki, koc termiczny…"></textarea></label>',
+        '<label class="wide"><span>Ewidencja wyposażenia</span><textarea name="items" rows="5" maxlength="10000" placeholder="Nazwa | ilość | minimum | RRRR-MM-DD&#10;Opatrunek indywidualny | 4 | 2 | 2028-12-31"></textarea><small>Jeden element w wierszu. Datę pomiń, jeżeli produkt jej nie ma.</small></label>'
       ].join('');
     }
     $('entityForm').innerHTML = fields + '<button class="button primary" type="submit">Dodaj pozycję</button>';
   }
 
   function entitySummary(item) {
-    if (selectedEntity === 'aeds') return item.location;
-    return [item.type, item.location].filter(Boolean).join(' · ');
+    const readiness = getReadiness(selectedEntity, item);
+    if (selectedEntity === 'aeds') return [readiness.label, item.location].filter(Boolean).join(' · ');
+    return [readiness.label, item.type, item.location].filter(Boolean).join(' · ');
   }
 
   function renderEntityList() {
@@ -934,8 +1149,9 @@
       return;
     }
     $('entityList').innerHTML = items.map(function (item) {
+      const readiness = getReadiness(selectedEntity, item);
       return [
-        '<article class="entity-row"><div><strong>', esc(item.name), '</strong><small>', esc(entitySummary(item)), '</small></div>',
+        '<article class="entity-row ', readiness.level, '"><div><strong>', esc(item.name), '</strong><small>', esc(entitySummary(item)), '</small></div>',
         '<button class="delete-button" type="button" data-delete-entity="', esc(item.id), '">Usuń</button></article>'
       ].join('');
     }).join('');
@@ -954,9 +1170,37 @@
     const id = selectedEntity.replace(/s$/, '') + '-' + Date.now();
     let item;
     if (selectedEntity === 'aeds') {
-      item = normalizeAed({ id: id, name: formData.get('name'), location: formData.get('location'), lat: formData.get('lat') || null, lon: formData.get('lon') || null }, 0);
+      item = normalizeAed({
+        id: id,
+        name: formData.get('name'),
+        location: formData.get('location'),
+        lat: formData.get('lat') || null,
+        lon: formData.get('lon') || null,
+        available: formData.get('available'),
+        access: formData.get('access'),
+        manufacturer: formData.get('manufacturer'),
+        model: formData.get('model'),
+        serialNumber: formData.get('serialNumber'),
+        lastInspection: formData.get('lastInspection'),
+        nextInspection: formData.get('nextInspection'),
+        electrodesExpiry: formData.get('electrodesExpiry'),
+        batteryExpiry: formData.get('batteryExpiry'),
+        notes: formData.get('notes')
+      }, 0);
     } else if (selectedEntity === 'kits') {
-      item = normalizeKit({ id: id, name: formData.get('name'), location: formData.get('location'), type: formData.get('type'), contents: formData.get('contents') }, 0);
+      item = normalizeKit({
+        id: id,
+        name: formData.get('name'),
+        location: formData.get('location'),
+        lat: formData.get('lat') || null,
+        lon: formData.get('lon') || null,
+        type: formData.get('type'),
+        available: formData.get('available'),
+        lastInspection: formData.get('lastInspection'),
+        nextInspection: formData.get('nextInspection'),
+        contents: formData.get('contents'),
+        items: parseInventoryRows(formData.get('items'))
+      }, 0);
     }
     state[selectedEntity].push(item);
     saveState();
@@ -1242,6 +1486,7 @@
 
   function init() {
     if (!DATA || !Array.isArray(DATA.procedures)) throw new Error('Brak danych aplikacji.');
+    saveState();
     renderQuickActions();
     renderProcedureFilters();
     renderProcedures();

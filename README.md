@@ -1,6 +1,6 @@
 # Ratownik PLK v2
 
-Wersja porównawcza aplikacji **Ratownik PLK**, zaprojektowana od nowa z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie.
+Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.5.0**.
 
 ## Najważniejsza zmiana
 
@@ -18,15 +18,17 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 - szybki telefon pod 112,
 - blok bezpieczeństwa własnego i środków ochrony osobistej przed narzędziami oraz procedurami,
 - podstawowa sekwencja ratownicza 1–2–3 widoczna od razu na ekranie Start,
-- interaktywne „Prowadź mnie”: bezpieczeństwo → reakcja → oddech → właściwa procedura,
+- interaktywne „Prowadź mnie”: bezpieczeństwo → reakcja → oddech → wybór RKO dorosłego lub dziecka albo właściwej procedury zdarzenia,
 - tryb krokowy procedur z krótkim poleceniem i rozwijanym opisem,
 - RKO dorosłego i dziecka, AED, zadławienie, krwotok, oparzenie, porażenie prądem, wypadek kolejowy, drgawki, pozycja boczna i FAST,
 - metronom RKO 110/min dostępny bezpośrednio na ekranie Start,
 - wspomagana dźwiękiem ocena oddechu: 2 sekundy przygotowania i pełne 10 sekund obserwacji,
 - metronom, ocena oddechu, timer, zapis godziny i telefon 112 dostępne bezpośrednio w odpowiednich krokach procedur,
 - pobieranie GPS i generator treści zgłoszenia,
-- sortowanie AED według przybliżonej odległości,
+- sortowanie AED i apteczek według przybliżonej odległości oraz otwieranie ich lokalizacji na mapie,
 - lokalne dodawanie i usuwanie demonstracyjnych AED oraz apteczek,
+- demonstracyjna ewidencja kontroli, terminów elektrod i baterii AED oraz wyposażenia apteczek,
+- automatyczna ocena gotowości zasobów: zielony / pomarańczowy / czerwony, alerty 90/60/30 dni i kontrola minimalnych stanów,
 - import i eksport kopii JSON,
 - tryb ciemny i większy tekst,
 - instalacja jako PWA i działanie offline,
@@ -55,6 +57,7 @@ node --check sw.js
 python3 tests/validate.py
 node tests/smoke.mjs
 node tests/offline.mjs
+node tests/mobile-layout.mjs
 ```
 
 ## Publikacja

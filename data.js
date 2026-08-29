@@ -4,10 +4,18 @@
   const sourceUrl = 'https://www.erc.edu/science-research/guidelines/guidelines-2025/guidelines-2025-english/';
 
   window.RATOWNIK_DATA = {
-    version: '2.4.0',
-    reviewedAt: '2026-08-28',
+    version: '2.5.0',
+    reviewedAt: '2026-08-29',
     quickProcedureIds: ['rko-dorosly', 'krwotok', 'porazenie-pradem', 'wypadek-kolejowy'],
-    emergencyChoiceIds: ['rko-dorosly', 'krwotok', 'zadlawienie', 'porazenie-pradem', 'wypadek-kolejowy'],
+    emergencyChoiceIds: [
+      'krwotok',
+      'zadlawienie',
+      'oparzenie',
+      'porazenie-pradem',
+      'wypadek-kolejowy',
+      'drgawki',
+      'udar'
+    ],
     eventTypes: [
       'Brak przytomności',
       'Brak prawidłowego oddechu / RKO',
@@ -237,15 +245,112 @@
       }
     ],
     defaultState: {
+      schemaVersion: 2,
       aeds: [
-        { id: 'aed-1', name: 'AED — wejście główne', location: 'Dane demonstracyjne: Zakład A, budynek administracyjny, parter', lat: 52.402, lon: 16.949 },
-        { id: 'aed-2', name: 'AED — hala szkoleniowa', location: 'Dane demonstracyjne: Zakład B, przy recepcji', lat: 52.400, lon: 16.944 },
-        { id: 'aed-3', name: 'AED — samochód patrolowy', location: 'Dane demonstracyjne: brygada utrzymania', lat: 52.405, lon: 16.955 }
+        {
+          id: 'aed-1',
+          name: 'AED — wejście główne',
+          location: 'Dane demonstracyjne: Zakład A, budynek administracyjny, parter',
+          lat: 52.402,
+          lon: 16.949,
+          available: true,
+          access: 'Dostęp 24/7 przy portierni',
+          manufacturer: 'Producent demonstracyjny',
+          model: 'Model A1',
+          serialNumber: 'DEMO-AED-001',
+          lastInspection: '2026-08-15',
+          nextInspection: '2027-02-15',
+          electrodesExpiry: '2028-06-30',
+          batteryExpiry: '2029-12-31',
+          notes: ''
+        },
+        {
+          id: 'aed-2',
+          name: 'AED — hala szkoleniowa',
+          location: 'Dane demonstracyjne: Zakład B, przy recepcji',
+          lat: 52.400,
+          lon: 16.944,
+          available: true,
+          access: 'Dostęp w godzinach pracy obiektu',
+          manufacturer: 'Producent demonstracyjny',
+          model: 'Model B2',
+          serialNumber: 'DEMO-AED-002',
+          lastInspection: '2026-07-10',
+          nextInspection: '2026-10-20',
+          electrodesExpiry: '2026-11-15',
+          batteryExpiry: '2027-11-30',
+          notes: 'Przykład terminów wymagających uwagi.'
+        },
+        {
+          id: 'aed-3',
+          name: 'AED — samochód patrolowy',
+          location: 'Dane demonstracyjne: brygada utrzymania',
+          lat: 52.405,
+          lon: 16.955,
+          available: false,
+          access: 'Czasowo niedostępny — przykład demonstracyjny',
+          manufacturer: 'Producent demonstracyjny',
+          model: 'Model C3',
+          serialNumber: 'DEMO-AED-003',
+          lastInspection: '2026-02-20',
+          nextInspection: '2026-08-20',
+          electrodesExpiry: '2027-04-30',
+          batteryExpiry: '2026-08-10',
+          notes: 'Przykład urządzenia wyłączonego z użycia.'
+        }
       ],
       kits: [
-        { id: 'kit-1', name: 'Apteczka — portiernia', location: 'Dane demonstracyjne: Zakład A, portiernia główna', type: 'zakładowa', contents: 'Rękawiczki, opatrunki, bandaże, maseczka CPR, koc termiczny' },
-        { id: 'kit-2', name: 'Apteczka — hala 2', location: 'Dane demonstracyjne: Zakład A, przy wejściu', type: 'zakładowa', contents: 'Rękawiczki, gaziki, opaska elastyczna, chusta, nożyczki' },
-        { id: 'kit-3', name: 'Apteczka — pojazd techniczny', location: 'Dane demonstracyjne: Zakład B, samochód służbowy', type: 'samochodowa', contents: 'Opatrunki, hydrożele, plastry, bandaże, koc termiczny' }
+        {
+          id: 'kit-1',
+          name: 'Apteczka — portiernia',
+          location: 'Dane demonstracyjne: Zakład A, portiernia główna',
+          lat: 52.4016,
+          lon: 16.9486,
+          type: 'zakładowa',
+          available: true,
+          lastInspection: '2026-08-15',
+          nextInspection: '2027-01-15',
+          contents: 'Rękawiczki, opatrunki, bandaże, maseczka CPR, koc termiczny',
+          items: [
+            { name: 'Rękawiczki nitrylowe — para', quantity: 8, minimum: 4, expiry: '2029-12-31' },
+            { name: 'Opatrunek indywidualny', quantity: 6, minimum: 3, expiry: '2028-10-31' },
+            { name: 'Koc termiczny', quantity: 3, minimum: 2, expiry: '' }
+          ]
+        },
+        {
+          id: 'kit-2',
+          name: 'Apteczka — hala 2',
+          location: 'Dane demonstracyjne: Zakład A, przy wejściu',
+          lat: 52.4004,
+          lon: 16.9461,
+          type: 'zakładowa',
+          available: true,
+          lastInspection: '2026-07-10',
+          nextInspection: '2026-10-10',
+          contents: 'Rękawiczki, gaziki, opaska elastyczna, chusta, nożyczki',
+          items: [
+            { name: 'Rękawiczki nitrylowe — para', quantity: 4, minimum: 4, expiry: '2029-12-31' },
+            { name: 'Kompres jałowy', quantity: 5, minimum: 3, expiry: '2026-11-10' },
+            { name: 'Chusta trójkątna', quantity: 2, minimum: 2, expiry: '' }
+          ]
+        },
+        {
+          id: 'kit-3',
+          name: 'Apteczka — pojazd techniczny',
+          location: 'Dane demonstracyjne: Zakład B, samochód służbowy',
+          lat: 52.4047,
+          lon: 16.9544,
+          type: 'samochodowa',
+          available: true,
+          lastInspection: '2026-02-01',
+          nextInspection: '2026-08-01',
+          contents: 'Opatrunki, hydrożele, plastry, bandaże, koc termiczny',
+          items: [
+            { name: 'Opatrunek indywidualny', quantity: 0, minimum: 2, expiry: '2027-04-30' },
+            { name: 'Opatrunek hydrożelowy', quantity: 1, minimum: 1, expiry: '2026-08-01' },
+            { name: 'Koc termiczny', quantity: 1, minimum: 2, expiry: '' }
+          ]
+        }
       ],
       location: null,
       preferences: {

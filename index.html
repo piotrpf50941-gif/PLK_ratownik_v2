@@ -197,8 +197,21 @@
         <div class="setting-row"><div><strong>Tryb ciemny</strong><small>Mniejsza jasność ekranu w nocy.</small></div><button id="darkModeToggle" class="switch" type="button" role="switch" aria-checked="false"><span></span></button></div>
       </section>
 
+      <section class="settings-card readiness-card" aria-labelledby="readinessTitle">
+        <div class="settings-title"><span aria-hidden="true">✓</span><div><h2 id="readinessTitle">Gotowość zasobów — demo</h2><p>Lokalna ocena terminów kontroli, ważności i minimalnego wyposażenia. Prawdziwe dane wymagają części wewnętrznej.</p></div></div>
+        <div class="readiness-grid" aria-live="polite">
+          <article><span>AED</span><strong><b id="readinessAedOk">0</b> gotowe</strong><small><b id="readinessAedAttention">0</b> wymagają uwagi</small></article>
+          <article><span>APTECZKI</span><strong><b id="readinessKitOk">0</b> gotowe</strong><small><b id="readinessKitAttention">0</b> wymagają uwagi</small></article>
+        </div>
+        <details class="readiness-details">
+          <summary>Alerty wymagające uwagi <strong id="readinessAlertCount">0</strong></summary>
+          <div id="readinessAlertList" class="readiness-alert-list"></div>
+        </details>
+        <button class="button secondary full-width" type="button" data-go="resources">Otwórz zasoby ratunkowe</button>
+      </section>
+
       <section class="settings-card" aria-labelledby="dataTitle">
-        <div class="settings-title"><span aria-hidden="true">▣</span><div><h2 id="dataTitle">Dane demonstracyjne</h2><p>AED i apteczki są zapisane wyłącznie na tym urządzeniu. Nie wpisuj tutaj danych osobowych.</p></div></div>
+        <div class="settings-title"><span aria-hidden="true">▣</span><div><h2 id="dataTitle">Dane demonstracyjne</h2><p>AED, apteczki, kontrole i wyposażenie są zapisane wyłącznie na tym urządzeniu. Nie wpisuj tutaj danych osobowych ani rzeczywistych danych chronionych.</p></div></div>
         <div class="data-summary">
           <span><strong id="dataAedCount">0</strong>AED</span>
           <span><strong id="dataKitCount">0</strong>apteczki</span>

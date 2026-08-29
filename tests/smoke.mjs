@@ -247,7 +247,10 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
-assert.equal(context.window.RATOWNIK_DATA.version, '2.4.0');
+assert.equal(context.window.RATOWNIK_DATA.version, '2.5.0');
+assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.length, 7);
+assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('rko-dorosly'), false);
+assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('pozycja-boczna'), false);
 assert.equal(context.window.RATOWNIK_DATA.procedures.find((item) => item.id === 'oparzenie').steps[1].tools[0].seconds, 1200);
 const appSource = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 assert.match(appSource, /const BREATH_PREP_SECONDS = 2;/);
@@ -255,6 +258,7 @@ assert.match(appSource, /const BREATH_ASSESS_SECONDS = 10;/);
 assert.match(appSource, /scheduleBreathCues/);
 vm.runInContext(appSource, context, { filename: 'app.js' });
 
+assert.equal(JSON.parse(storage.get('ratownik_plk_v2_state')).schemaVersion, 2);
 assert.match(elements.get('quickActions').innerHTML, /Brak oddechu \/ RKO/);
 assert.equal(elements.get('breathTimerValue').textContent, '12 sekund łącznie');
 assert.match(elements.get('breathTimerStatus').textContent, /10 sekund oceny/);
@@ -291,6 +295,10 @@ assert.match(elements.get('toast').textContent, /Zapisano godzinę/);
 assert.equal((elements.get('procedureList').innerHTML.match(/data-procedure=/g) || []).length, 10);
 assert.equal(elements.get('aedCount').textContent, 3);
 assert.match(elements.get('resourceList').innerHTML, /AED — wejście główne/);
+assert.match(elements.get('resourceList').innerHTML, /resource-status/);
+assert.match(elements.get('resourceList').innerHTML, /NIEDOSTĘPNY/);
+assert.ok(Number(elements.get('readinessAlertCount').textContent) > 0);
+assert.match(elements.get('readinessAlertList').innerHTML, /AED — samochód patrolowy/);
 assert.equal(elements.get('screen-home').hidden, false);
 assert.equal(elements.get('screen-procedures').hidden, true);
 
@@ -305,11 +313,32 @@ fakeDocument.dispatch('click', guideUnresponsiveTarget);
 assert.equal(elements.get('guideTitle').textContent, 'Oceń oddech');
 const guideAbnormalTarget = new FakeElement('', { dataset: { guideAction: 'breathing-abnormal' } });
 fakeDocument.dispatch('click', guideAbnormalTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Wybierz właściwe prowadzenie RKO');
+const guideAdultTarget = new FakeElement('', { dataset: { guideAction: 'rko-adult' } });
+fakeDocument.dispatch('click', guideAdultTarget);
 assert.equal(elements.get('guideTitle').textContent, 'Wezwij 112 i rozpocznij RKO');
 assert.match(elements.get('emergencyChoices').innerHTML, /data-procedure-tool="metronome"/);
 const guideRkoTarget = new FakeElement('', { dataset: { procedure: 'rko-dorosly', procedureStep: '4' } });
 fakeDocument.dispatch('click', guideRkoTarget);
 assert.equal(elements.get('stepProgressText').textContent, 'Krok 5 z 7');
+
+elements.get('emergencyGuideButton').dispatch('click');
+fakeDocument.dispatch('click', guideSafeTarget);
+fakeDocument.dispatch('click', guideUnresponsiveTarget);
+fakeDocument.dispatch('click', guideAbnormalTarget);
+const guideChildTarget = new FakeElement('', { dataset: { guideAction: 'rko-child' } });
+fakeDocument.dispatch('click', guideChildTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Wezwij 112 i rozpocznij RKO dziecka');
+assert.match(elements.get('emergencyChoices').innerHTML, /data-procedure="rko-dziecko"/);
+
+elements.get('emergencyGuideButton').dispatch('click');
+fakeDocument.dispatch('click', guideSafeTarget);
+const guideResponsiveTarget = new FakeElement('', { dataset: { guideAction: 'responds' } });
+fakeDocument.dispatch('click', guideResponsiveTarget);
+assert.equal(elements.get('guideTitle').textContent, 'Co się wydarzyło?');
+assert.equal((elements.get('emergencyChoices').innerHTML.match(/class="emergency-choice"/g) || []).length, 7);
+assert.match(elements.get('emergencyChoices').innerHTML, /Podejrzenie udaru/);
+assert.doesNotMatch(elements.get('emergencyChoices').innerHTML, /RKO dziecka/);
 
 elements.get('procedureSearch').value = 'udar';
 elements.get('procedureSearch').dispatch('input');
@@ -363,6 +392,12 @@ assert.ok(storage.has('ratownik_plk_v2_state'));
 
 elements.get('resourceTabs').dispatch('click', resourceTabs[1]);
 assert.match(elements.get('resourceList').innerHTML, /Apteczka — portiernia/);
+assert.match(elements.get('resourceList').innerHTML, /Pokaż apteczkę na mapie/);
+
+elements.get('dataTabs').dispatch('click', entityTabs[1]);
+assert.match(elements.get('entityForm').innerHTML, /name="nextInspection"/);
+assert.match(elements.get('entityForm').innerHTML, /name="items"/);
+assert.match(elements.get('entityForm').innerHTML, /stan minimalny|minimum/);
 
 context.navigator.onLine = false;
 for (const callback of windowListeners.get('offline') || []) callback();

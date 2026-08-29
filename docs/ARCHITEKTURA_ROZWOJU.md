@@ -1,6 +1,6 @@
 # Ratownik PLK v2 — architektura rozwoju
 
-Stan dokumentu: 29.08.2026. Dokument opisuje kierunek techniczny; backend nie został jeszcze podłączony.
+Stan dokumentu: 29.08.2026, aplikacja 2.5.0. Dokument opisuje kierunek techniczny; backend nie został jeszcze podłączony.
 
 ## 1. Audyt obecnej aplikacji
 
@@ -13,6 +13,7 @@ Elementy, które warto zachować i rozwijać:
 - pełnoekranowy tryb krokowy;
 - metronom 110/min i ocena oddechu 2+10 s;
 - GPS, generator zgłoszenia oraz demonstracyjne listy AED i apteczek;
+- lokalną, demonstracyjną ocenę gotowości AED i apteczek, w tym terminy 90/60/30 dni oraz minimalne stany wyposażenia;
 - lokalne preferencje, import/eksport danych demonstracyjnych;
 - PWA, Service Worker i sygnalizacja dostępności aktualizacji;
 - test walidacyjny oraz test logiki DOM bez zewnętrznych zależności.
@@ -119,15 +120,14 @@ Profil użytkownika łączy `auth.users` z jednym lub kilkoma rekordami `members
 
 ## 9. Kolejność realizacji po obecnym etapie
 
-1. Dokończyć i zatwierdzić Etap 1: hierarchia Start, narzędzia w procedurach, testy mobilne.
-2. Przegląd merytoryczny procedur oraz pełny test scenariuszy „Prowadź mnie”.
-3. Test instalacji/offline na urządzeniach Android i iOS oraz polityka aktualizacji danych.
-4. Zatwierdzić dostawcę backendu, sposób logowania i klasyfikację danych.
-5. Utworzyć osobne środowiska `dev`, `test` i `prod`; wdrożyć Auth, strukturę organizacyjną i RLS.
-6. Dodać apteczki, wyposażenie, kontrole i alerty terminów.
-7. Dodać AED, komponenty, kontrole i alerty.
-8. Dodać ratowników i bezpieczne alarmy demonstracyjne, następnie PUSH/SMS.
-9. Dodać panel administracyjny, QR, raporty i pełny audyt.
+1. Zatwierdzić merytorycznie ukończony Etap 1: hierarchię Start, narzędzia w procedurach i scenariusze „Prowadź mnie”.
+2. Wykonać ręczny test instalacji, offline i kluczowych scenariuszy na reprezentatywnych urządzeniach Android i iOS oraz zatwierdzić politykę aktualizacji danych.
+3. Zatwierdzić dostawcę backendu, sposób logowania i klasyfikację danych.
+4. Utworzyć osobne środowiska `dev`, `test` i `prod`; wdrożyć Auth, strukturę organizacyjną i RLS.
+5. Przenieść demonstracyjny model apteczek, wyposażenia, kontroli i alertów terminów do chronionej bazy.
+6. Przenieść demonstracyjny model AED, komponentów, kontroli i alertów do chronionej bazy.
+7. Dodać ratowników i bezpieczne alarmy demonstracyjne, następnie PUSH/SMS.
+8. Dodać panel administracyjny, QR, raporty i pełny audyt.
 
 ## 10. Decyzje wymagane przed backendem
 
