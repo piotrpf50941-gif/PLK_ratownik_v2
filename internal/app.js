@@ -119,17 +119,30 @@
   }
 
   function activeRolesForCurrentOrganization() {
+    var organizationScope = new Set();
+    var cursor = currentOrganizationId;
+    var guard = 0;
+    while (cursor && guard < 16) {
+      organizationScope.add(cursor);
+      var organization = organizations.find(function (item) { return item.id === cursor; });
+      cursor = organization ? organization.parent_id : null;
+      guard += 1;
+    }
+
     var roles = memberships
       .filter(function (membership) {
-        return membership.active && membership.organization_id === currentOrganizationId;
+        if (!membership.active) return false;
+        if (membership.organization_id === currentOrganizationId) return true;
+        return membership.role === 'unit_admin' && organizationScope.has(membership.organization_id);
       })
       .map(function (membership) { return membership.role; });
+
     if (memberships.some(function (membership) {
       return membership.active && membership.role === 'system_admin';
     }) && roles.indexOf('system_admin') === -1) {
       roles.push('system_admin');
     }
-    return roles;
+    return Array.from(new Set(roles));
   }
 
   function canManageCurrentOrganization() {
