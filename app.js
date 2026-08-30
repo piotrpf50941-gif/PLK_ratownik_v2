@@ -7,6 +7,7 @@
   const STATE_SCHEMA_VERSION = 2;
   const VALID_SCREENS = ['home', 'procedures', 'resources', 'tools'];
   const VALID_ENTITIES = ['aeds', 'kits'];
+  const VALID_RESOURCES = ['aeds', 'kits', 'rescuers'];
   const BREATH_PREP_SECONDS = 2;
   const BREATH_ASSESS_SECONDS = 10;
   const BREATH_TOTAL_SECONDS = BREATH_PREP_SECONDS + BREATH_ASSESS_SECONDS;
@@ -59,6 +60,11 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function normalizeCoordinate(value, minimum, maximum) {
+    const coordinate = safeNumber(value, null);
+    return coordinate !== null && coordinate >= minimum && coordinate <= maximum ? coordinate : null;
+  }
+
   function normalizeBoolean(value, fallback) {
     if (typeof value === 'boolean') return value;
     if (value === 'true' || value === '1' || value === 1 || value === 'on') return true;
@@ -90,8 +96,8 @@
       id: cleanText(raw.id, 80) || 'aed-' + Date.now() + '-' + index,
       name: cleanText(raw.name, 120) || 'AED',
       location: cleanText(raw.location, 240),
-      lat: safeNumber(raw.lat, null),
-      lon: safeNumber(raw.lon, null),
+      lat: normalizeCoordinate(raw.lat, -90, 90),
+      lon: normalizeCoordinate(raw.lon, -180, 180),
       available: normalizeBoolean(raw.available, true),
       access: cleanText(raw.access, 180),
       manufacturer: cleanText(raw.manufacturer, 120),
@@ -111,8 +117,8 @@
       id: cleanText(raw.id, 80) || 'kit-' + Date.now() + '-' + index,
       name: cleanText(raw.name, 120) || 'Apteczka',
       location: cleanText(raw.location, 240),
-      lat: safeNumber(raw.lat, null),
-      lon: safeNumber(raw.lon, null),
+      lat: normalizeCoordinate(raw.lat, -90, 90),
+      lon: normalizeCoordinate(raw.lon, -180, 180),
       type: cleanText(raw.type, 80) || 'inna',
       available: normalizeBoolean(raw.available, true),
       lastInspection: normalizeDate(raw.lastInspection),
@@ -129,15 +135,16 @@
     const mergeLegacyDemo = function (items, entity) {
       if (storedSchemaVersion >= STATE_SCHEMA_VERSION) return items;
       return items.map(function (item) {
-        const demo = defaults[entity].find(function (candidate) { return candidate.id === item.id; });
-        return demo ? Object.assign({}, clone(demo), item) : item;
+        const rawItem = item && typeof item === 'object' ? item : {};
+        const demo = defaults[entity].find(function (candidate) { return candidate.id === rawItem.id; });
+        return demo ? Object.assign({}, clone(demo), rawItem) : rawItem;
       });
     };
     const rawAeds = Array.isArray(raw.aeds) ? raw.aeds : defaults.aeds;
     const rawKits = Array.isArray(raw.kits) ? raw.kits : defaults.kits;
     const location = raw.location && typeof raw.location === 'object' ? {
-      lat: safeNumber(raw.location.lat, null),
-      lon: safeNumber(raw.location.lon, null),
+      lat: normalizeCoordinate(raw.location.lat, -90, 90),
+      lon: normalizeCoordinate(raw.location.lon, -180, 180),
       accuracy: Math.max(0, safeNumber(raw.location.accuracy, 0)),
       timestamp: safeNumber(raw.location.timestamp, Date.now())
     } : null;
@@ -656,6 +663,17 @@
 
   function renderResources() {
     renderResourceCounts();
+    const isResponderAccess = selectedResource === 'rescuers';
+    const searchBox = $('resourceSearch').closest('.resource-search');
+    searchBox.hidden = isResponderAccess;
+    $('resourceLocationButton').hidden = isResponderAccess;
+
+    if (isResponderAccess) {
+      $('resourceHint').textContent = 'Dane ratowników są dostępne wyłącznie po bezpiecznym logowaniu i sprawdzeniu jednostki oraz roli.';
+      $('resourceList').innerHTML = renderResponderAccessCard();
+      return;
+    }
+
     const query = normalizeSearch($('resourceSearch').value);
     let items = state[selectedResource].slice();
 
@@ -691,6 +709,18 @@
       if (selectedResource === 'aeds') return renderAedCard(item);
       return renderKitCard(item);
     }).join('');
+  }
+
+  function renderResponderAccessCard() {
+    return [
+      '<article class="resource-card internal-access">',
+      '<span class="resource-icon rescuer" aria-hidden="true">👥</span>',
+      '<div class="resource-copy"><div class="resource-title-line"><strong>Ratownicy i alarmowanie</strong><span class="resource-status warning"><i></i>CHRONIONE</span></div>',
+      '<span>Lista ratowników, numery telefonów, jednostki i historia alarmów nie są zapisane w publicznej aplikacji.</span>',
+      '<small>Zaloguj się kontem wcześniej zatwierdzonym przez administratora.</small>',
+      '<a class="button primary resource-login-button" href="internal/">OTWÓRZ LOGOWANIE</a>',
+      '</div></article>'
+    ].join('');
   }
 
   function renderAedCard(item) {
@@ -1431,7 +1461,7 @@
 
     $('resourceTabs').addEventListener('click', function (event) {
       const button = event.target.closest('[data-resource]');
-      if (!button) return;
+      if (!button || VALID_RESOURCES.indexOf(button.dataset.resource) < 0) return;
       selectedResource = button.dataset.resource;
       all('#resourceTabs [data-resource]').forEach(function (tab) { tab.setAttribute('aria-selected', String(tab === button)); });
       $('resourceSearch').value = '';

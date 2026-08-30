@@ -47,7 +47,10 @@ def main():
     for attribute, reference in parser.references:
         path = local_path(reference)
         if path:
-            assert (ROOT / path).is_file(), f"Brak zasobu {attribute}={reference}"
+            target = ROOT / path
+            assert target.is_file() or (
+                target.is_dir() and (target / "index.html").is_file()
+            ), f"Brak zasobu {attribute}={reference}"
 
     manifest = json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
     assert manifest.get("display") == "standalone"

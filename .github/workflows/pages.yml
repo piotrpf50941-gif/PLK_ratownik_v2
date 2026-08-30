@@ -3,6 +3,8 @@ name: Publikacja GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,11 +13,34 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v4
+      - name: Ustaw Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Zainstaluj wyłącznie zależności testów
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sprawdź składnię JavaScript
+        run: node --check app.js && node --check data.js && node --check sw.js && node --check internal/app.js
+      - name: Uruchom testy integralności i DOM
+        run: python3 tests/validate.py && node tests/smoke.mjs
+      - name: Sprawdź tryb offline i układ mobilny
+        run: node tests/offline.mjs && node tests/mobile-layout.mjs
+      - name: Sprawdź bezpieczeństwo panelu wewnętrznego
+        run: node tests/internal-platform.mjs && node tests/database.mjs && node tests/edge-runtime.mjs && node tests/internal-runtime.mjs
+
   deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -23,20 +48,19 @@ jobs:
     steps:
       - name: Pobierz kod
         uses: actions/checkout@v4
-      - name: Sprawdź składnię JavaScript
-        run: node --check app.js && node --check data.js && node --check sw.js
-      - name: Uruchom testy integralności i DOM
-        run: python3 tests/validate.py && node tests/smoke.mjs
-      - name: Sprawdź tryb offline i układ mobilny
-        run: node tests/offline.mjs && node tests/mobile-layout.mjs
       - name: Skonfiguruj Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
       - name: Przygotuj artefakt
+        run: |
+          mkdir -p _site
+          cp index.html app.js data.js styles.css sw.js manifest.webmanifest .nojekyll _site/
+          cp -R assets internal _site/
+      - name: Prześlij wyłącznie pliki aplikacji
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - name: Opublikuj
         id: deployment
         uses: actions/deploy-pages@v4

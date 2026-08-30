@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'ratownik-plk-v2-2.5.0';
+const CACHE_NAME = 'ratownik-plk-v2-2.6.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,6 +22,8 @@ const APP_SHELL = [
   './assets/topics/sec10.jpg'
 ];
 const CACHEABLE_PATHS = new Set(APP_SHELL.map(function (path) { return new URL(path, self.location.href).pathname; }));
+const PUBLIC_SCOPE_PATH = new URL(self.registration.scope).pathname;
+const PUBLIC_NAVIGATION_PATHS = new Set([PUBLIC_SCOPE_PATH, PUBLIC_SCOPE_PATH + 'index.html']);
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
@@ -34,7 +36,7 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
       .then(function (keys) {
-        return Promise.all(keys.filter(function (key) { return key !== CACHE_NAME; }).map(function (key) { return caches.delete(key); }));
+        return Promise.all(keys.filter(function (key) { return key.startsWith('ratownik-plk-v2-') && key !== CACHE_NAME; }).map(function (key) { return caches.delete(key); }));
       })
       .then(function () { return self.clients.claim(); })
   );
@@ -44,17 +46,80 @@ self.addEventListener('message', function (event) {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+function cleanNotificationText(value, fallback, maximum) {
+  const cleaned = String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return cleaned.slice(0, maximum || 180) || fallback;
+}
+
+function safeNotificationUrl(value) {
+  const fallback = new URL('./internal/', self.registration.scope).href;
+  try {
+    const candidate = new URL(value || fallback, fallback);
+    const internalPath = new URL('./internal/', self.registration.scope).pathname;
+    return candidate.origin === self.location.origin && candidate.pathname.startsWith(internalPath)
+      ? candidate.href
+      : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+self.addEventListener('push', function (event) {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = {};
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) payload = {};
+
+  // Ekran blokady nie ujawnia danych pracownika, miejsca ani opisu zdarzenia.
+  const title = 'Ratownik PLK — potrzebna pomoc';
+  const options = {
+    body: 'Otwórz panel i zaloguj się, aby zobaczyć szczegóły alarmu.',
+    icon: './assets/icons/icon-192.png',
+    badge: './assets/icons/icon-192.png',
+    tag: cleanNotificationText(payload.tag, 'ratownik-plk-alert', 120),
+    renotify: true,
+    requireInteraction: true,
+    data: {
+      openUrl: safeNotificationUrl(payload.openUrl)
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  const targetUrl = safeNotificationUrl(event.notification.data && event.notification.data.openUrl);
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
+      const existing = windows.find(function (client) {
+        return client.url === targetUrl;
+      });
+      if (existing) return existing.focus();
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener('fetch', function (event) {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {
+    // Panel wewnętrzny pozostaje poza publicznym cache i fallbackiem offline.
+    if (!PUBLIC_NAVIGATION_PATHS.has(url.pathname)) return;
     event.respondWith(
       fetch(event.request)
-        .then(function (response) {
+        .then(async function (response) {
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return (await caches.match('./index.html')) || response;
+          }
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put('./index.html', copy); });
+          try { await (await caches.open(CACHE_NAME)).put('./index.html', copy); } catch (error) { /* Brak miejsca nie blokuje aplikacji. */ }
           return response;
         })
         .catch(function () { return caches.match('./index.html'); })
@@ -70,7 +135,7 @@ self.addEventListener('fetch', function (event) {
       return fetch(event.request).then(function (response) {
         if (!response || response.status !== 200 || response.type !== 'basic') return response;
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+        event.waitUntil(caches.open(CACHE_NAME).then(function (cache) { return cache.put(event.request, copy); }).catch(function () {}));
         return response;
       });
     })

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071d2b">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <title>Ratownik PLK — panel wewnętrzny</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../" aria-label="Wróć do publicznej aplikacji Ratownik PLK">
+      <img src="../assets/logo-plk.webp" alt="" width="54" height="54">
+      <span><strong>RATOWNIK PLK</strong><small>Panel wewnętrzny</small></span>
+    </a>
+    <span id="connectionBadge" class="badge muted">SPRAWDZANIE</span>
+  </header>
+
+  <main class="shell">
+    <div id="offlineNotice" class="notice warning" role="status" hidden>OFFLINE — alarmowanie i zarządzanie wymagają internetu. <a href="../">Przejdź do procedur i narzędzi offline</a>.</div>
+    <section id="configurationNotice" class="notice warning" hidden>
+      <h1>Panel czeka na bezpieczne połączenie</h1>
+      <p>Brakuje adresu projektu i klucza publikowalnego Supabase. To nie są sekrety, ale panel zacznie działać dopiero po ich uzupełnieniu w pliku <code>internal/config.js</code>.</p>
+      <a class="button secondary" href="README.md">Otwórz instrukcję konfiguracji</a>
+    </section>
+
+    <section id="loginSection" class="auth-card" hidden>
+      <p class="eyebrow">CZĘŚĆ WEWNĘTRZNA</p>
+      <h1>Zaloguj się</h1>
+      <p>Dostęp mają wyłącznie wcześniej zaproszeni pracownicy. Na podany adres wyślemy jednorazowy link logowania.</p>
+      <form id="loginForm" class="stack">
+        <label for="emailInput">Służbowy adres e-mail</label>
+        <input id="emailInput" name="email" type="email" autocomplete="email" inputmode="email" required placeholder="imie.nazwisko@firma.pl">
+        <button id="loginButton" class="button primary" type="submit">WYŚLIJ LINK LOGOWANIA</button>
+      </form>
+      <p id="loginStatus" class="form-status" role="status" aria-live="polite"></p>
+      <button id="retryConnectionButton" class="button secondary" type="button" hidden>SPRÓBUJ POŁĄCZYĆ PONOWNIE</button>
+      <button id="retrySignOutButton" class="button secondary" type="button" hidden>PONÓW WYLOGOWANIE</button>
+      <div class="security-note">
+        <strong>Ochrona danych</strong>
+        <span>Publiczne repozytorium nie przechowuje listy ratowników, numerów telefonów ani haseł.</span>
+      </div>
+    </section>
+
+    <section id="accessDeniedSection" class="notice danger" hidden>
+      <h1>Brak aktywnych uprawnień</h1>
+      <p>Konto zostało rozpoznane, ale nie jest przypisane do aktywnej jednostki. Skontaktuj się z administratorem systemu.</p>
+      <button id="deniedSignOutButton" class="button secondary" type="button">WYLOGUJ</button>
+    </section>
+
+    <section id="internalApp" hidden>
+      <div class="user-strip">
+        <div>
+          <small>Zalogowano jako</small>
+          <strong id="userDisplayName">Pracownik</strong>
+          <span id="userEmail"></span>
+        </div>
+        <button id="signOutButton" class="button ghost" type="button">Wyloguj</button>
+      </div>
+
+      <div class="context-bar">
+        <label for="organizationSelect">Aktywna jednostka</label>
+        <select id="organizationSelect"></select>
+        <span id="roleBadge" class="badge">PRACOWNIK</span>
+      </div>
+      <p id="panelStatus" class="form-status" role="status"></p>
+
+      <section class="emergency-panel">
+        <div>
+          <p class="eyebrow">ALARMOWANIE</p>
+          <h2>Potrzebna pomoc ratowników?</h2>
+          <p>Alarm wymaga potwierdzenia. W środowisku testowym nic nie jest wysyłane.</p>
+        </div>
+        <button id="openAlertButton" class="button emergency" type="button">🚨 WEZWIJ RATOWNIKÓW</button>
+      </section>
+
+      <nav id="adminTabs" class="tabs" aria-label="Panel administracyjny">
+        <button type="button" class="active" data-panel="dashboard" aria-selected="true">Dashboard</button>
+        <button type="button" data-panel="responders" aria-selected="false">Ratownicy</button>
+        <button type="button" data-panel="organizations" aria-selected="false">Jednostki</button>
+        <button type="button" data-panel="incidents" aria-selected="false">Alarmy</button>
+      </nav>
+
+      <section id="dashboardPanel" class="panel active" data-panel-view="dashboard">
+        <div class="section-heading">
+          <div><p class="eyebrow">GOTOWOŚĆ JEDNOSTKI</p><h2>Dashboard</h2></div>
+          <button id="refreshButton" class="button ghost" type="button">Odśwież</button>
+        </div>
+        <div class="metrics">
+          <article><span>RATOWNICY</span><strong id="responderMetric">—</strong><small id="responderMetricNote">aktywni</small></article>
+          <article><span>ALARMY</span><strong id="incidentMetric">—</strong><small>ostatnie 30 dni</small></article>
+          <article><span>JEDNOSTKI</span><strong id="organizationMetric">—</strong><small>w dostępnym zakresie</small></article>
+          <article><span>UWAGA</span><strong id="attentionMetric">—</strong><small>elementy wymagające reakcji</small></article>
+        </div>
+        <div class="card">
+          <h3>Stan integracji</h3>
+          <dl class="status-list">
+            <div><dt>Uwierzytelnienie</dt><dd class="ok">aktywne</dd></div>
+            <div><dt>Uprawnienia</dt><dd class="ok">sprawdzane w bazie</dd></div>
+            <div><dt>PUSH / SMS</dt><dd id="notificationMode">tryb testowy</dd></div>
+            <div class="push-row"><dt>Twoja gotowość</dt><dd><span id="availabilityStatus">dotyczy ratowników</span><button id="availabilityButton" class="button secondary" type="button" hidden>ZGŁOŚ GOTOWOŚĆ</button></dd></div>
+            <div class="push-row"><dt>Powiadomienia tego telefonu</dt><dd><span id="pushStatus">niewłączone</span><button id="enablePushButton" class="button secondary" type="button">WŁĄCZ PUSH</button></dd></div>
+            <div><dt>Ostatnie odświeżenie</dt><dd id="lastRefresh">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section id="respondersPanel" class="panel" data-panel-view="responders" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">OSOBY WYZNACZONE</p><h2>Ratownicy</h2></div>
+          <span id="responderCountBadge" class="badge">0 AKTYWNYCH</span>
+        </div>
+        <div id="responderList" class="list" aria-live="polite"></div>
+
+        <form id="inviteResponderForm" class="card stack admin-only" hidden>
+          <h3>Dodaj ratownika</h3>
+          <p>Nowa osoba otrzyma zaproszenie e-mail. Numer telefonu trafia wyłącznie do chronionej części bazy i jest używany przez funkcję serwerową.</p>
+          <label for="responderName">Imię i nazwisko</label>
+          <input id="responderName" name="displayName" minlength="2" maxlength="120" required>
+          <label for="responderEmail">Służbowy e-mail</label>
+          <input id="responderEmail" name="email" type="email" autocomplete="off" required>
+          <label for="responderPhone">Telefon do alarmów SMS (format +48…)</label>
+          <input id="responderPhone" name="phone" type="tel" inputmode="tel" autocomplete="off" pattern="\+[1-9][0-9]{7,14}" placeholder="+48XXXXXXXXX">
+          <label for="responderCompetencies">Uprawnienia / kompetencje</label>
+          <input id="responderCompetencies" name="competencies" maxlength="200" placeholder="np. KPP, AED">
+          <button class="button primary" type="submit">ZAPROŚ I PRZYPISZ</button>
+          <p id="inviteStatus" class="form-status" role="status"></p>
+        </form>
+      </section>
+
+      <section id="organizationsPanel" class="panel" data-panel-view="organizations" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">STRUKTURA ORGANIZACYJNA</p><h2>Jednostki</h2></div>
+        </div>
+        <div id="organizationList" class="list"></div>
+        <form id="organizationForm" class="card stack admin-only" hidden>
+          <h3>Dodaj jednostkę podrzędną</h3>
+          <label for="organizationName">Nazwa</label>
+          <input id="organizationName" name="name" minlength="2" maxlength="160" required>
+          <label for="organizationCode">Kod</label>
+          <input id="organizationCode" name="code" minlength="2" maxlength="40" required>
+          <label for="organizationKind">Typ</label>
+          <select id="organizationKind" name="kind">
+            <option value="zlk">Zakład Linii Kolejowych</option>
+            <option value="section">Sekcja / jednostka</option>
+            <option value="workplace">Miejsce pracy</option>
+          </select>
+          <button class="button primary" type="submit">DODAJ JEDNOSTKĘ</button>
+          <p id="organizationStatus" class="form-status" role="status"></p>
+        </form>
+      </section>
+
+      <section id="incidentsPanel" class="panel" data-panel-view="incidents" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">HISTORIA OPERACYJNA</p><h2>Alarmy</h2></div>
+        </div>
+        <div id="incidentList" class="list"></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="alertDialog" class="dialog">
+    <form id="alertForm" method="dialog" class="stack">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">POTWIERDZENIE</p><h2>🚨 Wezwij ratowników</h2></div>
+        <button id="closeAlertButton" class="icon-button" type="button" aria-label="Zamknij">×</button>
+      </div>
+      <div id="alertModeNotice" class="notice warning compact">Tryb testowy: alarm zostanie zapisany, ale PUSH ani SMS nie zostaną wysłane.</div>
+      <p>Jednostka: <strong id="alertOrganizationName"></strong></p>
+      <a class="button secondary" href="tel:112">📞 ZADZWOŃ 112</a>
+      <label for="incidentType">Rodzaj zdarzenia</label>
+      <select id="incidentType" name="incidentType" required>
+        <option value="">Wybierz…</option>
+        <option value="unconscious">Osoba nieprzytomna</option>
+        <option value="cardiac_arrest">Podejrzenie zatrzymania krążenia</option>
+        <option value="trauma">Uraz / wypadek</option>
+        <option value="bleeding">Silny krwotok</option>
+        <option value="other">Inne zdarzenie</option>
+      </select>
+      <label for="incidentPlace">Dokładne miejsce</label>
+      <input id="incidentPlace" name="place" minlength="2" maxlength="240" required placeholder="Obiekt, tor, kilometr, pomieszczenie">
+      <div class="location-row">
+        <button id="getLocationButton" class="button secondary" type="button">📍 POBIERZ GPS</button>
+        <span id="locationStatus">Lokalizacja niepobrana</span>
+      </div>
+      <label for="incidentNote">Krótka informacja (bez zbędnych danych medycznych)</label>
+      <textarea id="incidentNote" name="note" rows="3" maxlength="500"></textarea>
+      <label class="confirm-row">
+        <input id="alertConfirm" type="checkbox">
+        <span>Potwierdzam jednostkę, miejsce i zamiar uruchomienia alarmu.</span>
+      </label>
+      <button id="sendAlertButton" class="button emergency" type="submit" disabled>URUCHOM ALARM</button>
+      <p id="alertStatus" class="form-status" role="status"></p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -31,6 +31,7 @@ class FakeElement {
     this.open = false;
     this.childSpan = null;
     this.parentToolCard = null;
+    this.parentResourceSearch = null;
   }
   addEventListener(type, callback) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
@@ -59,6 +60,10 @@ class FakeElement {
   }
   closest(selector) {
     if (selector === '.tool-card') return this.parentToolCard;
+    if (selector === '.resource-search') {
+      if (!this.parentResourceSearch) this.parentResourceSearch = new FakeElement(this.id + '-resource-search');
+      return this.parentResourceSearch;
+    }
     const checks = [
       ['data-nav', 'nav'], ['data-go', 'go'], ['data-procedure', 'procedure'],
       ['data-close-dialog', 'closeDialog'], ['data-category', 'category'],
@@ -112,7 +117,7 @@ const screens = ['home', 'procedures', 'resources', 'tools'].map((name) => {
 });
 const dialogs = ['procedureDialog', 'emergencyDialog', 'reportDialog', 'dataDialog'].map((id) => elements.get(id));
 const navigation = ['home', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
-const resourceTabs = ['aeds', 'kits'].map((name) => new FakeElement('', { dataset: { resource: name } }));
+const resourceTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { resource: name } }));
 const entityTabs = ['aeds', 'kits'].map((name) => new FakeElement('', { dataset: { entity: name } }));
 elements.get('metronomeButton').parentToolCard = new FakeElement('metronome-card', { classes: ['tool-card'] });
 elements.get('breathTimerButton').parentToolCard = new FakeElement('breath-timer-card', { classes: ['tool-card'] });
@@ -247,7 +252,7 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
-assert.equal(context.window.RATOWNIK_DATA.version, '2.5.0');
+assert.equal(context.window.RATOWNIK_DATA.version, '2.6.1');
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.length, 7);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('rko-dorosly'), false);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('pozycja-boczna'), false);
@@ -393,6 +398,16 @@ assert.ok(storage.has('ratownik_plk_v2_state'));
 elements.get('resourceTabs').dispatch('click', resourceTabs[1]);
 assert.match(elements.get('resourceList').innerHTML, /Apteczka — portiernia/);
 assert.match(elements.get('resourceList').innerHTML, /Pokaż apteczkę na mapie/);
+
+elements.get('resourceTabs').dispatch('click', resourceTabs[2]);
+assert.match(elements.get('resourceList').innerHTML, /Ratownicy i alarmowanie/);
+assert.match(elements.get('resourceList').innerHTML, /CHRONIONE/);
+assert.match(elements.get('resourceList').innerHTML, /href="internal[/]"/);
+assert.equal(elements.get('resourceSearch').parentResourceSearch.hidden, true);
+assert.equal(elements.get('resourceLocationButton').hidden, true);
+const invalidResource = new FakeElement('', { dataset: { resource: 'phones' } });
+elements.get('resourceTabs').dispatch('click', invalidResource);
+assert.match(elements.get('resourceList').innerHTML, /Ratownicy i alarmowanie/);
 
 elements.get('dataTabs').dispatch('click', entityTabs[1]);
 assert.match(elements.get('entityForm').innerHTML, /name="nextInspection"/);

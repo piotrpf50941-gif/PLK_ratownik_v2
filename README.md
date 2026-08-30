@@ -1,6 +1,6 @@
 # Ratownik PLK v2
 
-Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.5.0**.
+Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.6.1**.
 
 ## Najważniejsza zmiana
 
@@ -33,8 +33,11 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 - tryb ciemny i większy tekst,
 - instalacja jako PWA i działanie offline,
 - spójny zestaw nowych grafik dopasowanych do każdej procedury.
+- osobny panel wewnętrzny z logowaniem, rolami, jednostkami, ratownikami i dashboardem administracyjnym,
+- bezpieczny alarm ratowników z potwierdzeniem, GPS, idempotencją i audytem; domyślnie działa w trybie symulacji bez wysyłania wiadomości,
+- schemat Supabase z RLS, prywatnymi kontaktami oraz Edge Functions dla zaproszeń i adapterów PUSH/SMS.
 
-Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Profil, ratownicy, alarmowanie, kontrole i panel administracyjny wymagają osobnej, uwierzytelnionej części. Kierunek techniczny opisuje [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
+Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Przygotowany moduł `internal/` pobiera dane dopiero po uwierzytelnieniu i sprawdzeniu RLS. Do czasu podłączenia osobnego projektu Supabase pokazuje bezpieczny ekran konfiguracji; żadna lista pracowników ani sekret nie trafia do GitHub Pages. Szczegóły zawiera [instrukcja panelu](internal/README.md) i [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
 
 ## Uruchomienie lokalne
 
@@ -48,25 +51,24 @@ Następnie otwórz `http://localhost:8080`.
 
 ## Testy
 
-Testy nie wymagają instalowania bibliotek:
+Testy publicznej PWA można uruchomić bez bibliotek. Pełny zestaw obejmuje też wykonanie SQL w izolowanym PostgreSQL oraz testy panelu i funkcji serwerowych z atrapami usług:
 
 ```bash
-node --check app.js
-node --check data.js
-node --check sw.js
-python3 tests/validate.py
-node tests/smoke.mjs
-node tests/offline.mjs
-node tests/mobile-layout.mjs
+npm ci --ignore-scripts
+npm test
 ```
 
 ## Publikacja
 
-Workflow GitHub Actions publikuje zawartość gałęzi `main` w GitHub Pages. W ustawieniach repozytorium wybierz **Settings → Pages → Source: GitHub Actions**.
+Workflow GitHub Actions testuje PR oraz gałąź `main`. Publikacja następuje tylko po pozytywnych testach i obejmuje wyłącznie pliki aplikacji, bez testów, zależności i kodu backendu. W ustawieniach repozytorium wybierz **Settings → Pages → Source: GitHub Actions**.
 
 Docelowy adres po publikacji:
 
-`https://piotrpf50941-gif.github.io/PLK_ratownik_v2/`
+[Otwórz aplikację](https://piotrpf50941-gif.github.io/PLK_ratownik_v2/).
+
+Na telefonie: otwórz adres w Chrome/Safari, odśwież aplikację i wybierz instalację / dodanie do ekranu głównego. Po pierwszym pełnym załadowaniu przetestuj procedury, „Prowadź mnie” i narzędzia w trybie samolotowym. Nie uruchamiaj rzeczywistego połączenia 112 podczas testu. Zakładka Zasoby → Ratownicy prowadzi do części wewnętrznej, która wymaga osobnej konfiguracji opisanej w `internal/README.md`.
+
+Raport ostatniej kontroli i dalsze kroki: [Kontynuacja 30.08.2026](docs/KONTYNUACJA_2026-08-30.md).
 
 ## Ważne
 

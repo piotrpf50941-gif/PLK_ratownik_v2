@@ -1,0 +1,13 @@
+{
+  "name": "ratownik-plk-v2-checks",
+  "private": true,
+  "scripts": {
+    "test": "python3 tests/validate.py && node tests/smoke.mjs && node tests/offline.mjs && node tests/mobile-layout.mjs && node tests/internal-platform.mjs && node tests/database.mjs && node tests/internal-runtime.mjs && node tests/edge-runtime.mjs",
+    "test:database": "node tests/database.mjs"
+  },
+  "engines": { "node": ">=22.13.0" },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "jsdom": "30.0.1"
+  }
+}

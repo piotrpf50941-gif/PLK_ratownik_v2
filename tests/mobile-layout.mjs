@@ -27,4 +27,15 @@ assert.match(css, /@media\s*\(max-width:\s*390px\)/);
 assert.match(css, /env\(safe-area-inset-bottom\)/);
 assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 
+const internalHtml = fs.readFileSync(new URL('../internal/index.html', import.meta.url), 'utf8');
+const internalCss = fs.readFileSync(new URL('../internal/styles.css', import.meta.url), 'utf8');
+assert.match(internalHtml, /width=device-width,initial-scale=1,viewport-fit=cover/);
+assert.match(internalCss, /\.button\s*\{[^}]*min-height:\s*50px/s);
+assert.match(internalCss, /\.button\.emergency\s*\{[^}]*min-height:\s*58px/s);
+assert.match(internalCss, /input, select, textarea\s*\{[^}]*min-height:\s*52px/s);
+assert.match(internalCss, /@media\s*\(max-width:\s*480px\)/);
+assert.match(internalCss, /overflow-wrap:\s*anywhere/);
+assert.match(internalCss, /env\(safe-area-inset-bottom\)/);
+assert.match(internalCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+
 console.log('Test mobilny CSS: OK (320 px, duże cele dotykowe, bezpieczne marginesy, ograniczenie animacji)');

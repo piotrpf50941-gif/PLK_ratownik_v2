@@ -167,13 +167,14 @@
         <div>
           <span class="section-kicker">POMOC W POBLIŻU</span>
           <h1 id="resourcesTitle">Zasoby ratunkowe</h1>
-          <p>Publiczne dane demonstracyjne AED i apteczek, dostępne również offline.</p>
+          <p>AED i apteczki działają demonstracyjnie offline. Dane ratowników wymagają bezpiecznego logowania.</p>
         </div>
         <button id="resourceLocationButton" class="button secondary" type="button">Użyj GPS</button>
       </header>
       <div id="resourceTabs" class="segment-control" role="tablist" aria-label="Rodzaj zasobu">
         <button type="button" role="tab" aria-selected="true" data-resource="aeds">AED <span id="aedCount">0</span></button>
         <button type="button" role="tab" aria-selected="false" data-resource="kits">Apteczki <span id="kitCount">0</span></button>
+        <button type="button" role="tab" aria-selected="false" data-resource="rescuers">Ratownicy <span aria-hidden="true">🔒</span></button>
       </div>
       <label class="search-box resource-search">
         <span aria-hidden="true">⌕</span>
@@ -225,8 +226,9 @@
       </section>
 
       <section class="settings-card internal-zone" aria-labelledby="internalZoneTitle">
-        <div class="settings-title"><span aria-hidden="true">⌾</span><div><h2 id="internalZoneTitle">Część wewnętrzna</h2><p>Profil pracownika, ratownicy, alarmowanie oraz ewidencja techniczna będą dostępne dopiero po bezpiecznym logowaniu i sprawdzeniu uprawnień.</p></div></div>
-        <p class="context-hint">Ta publiczna wersja nie pobiera ani nie zawiera numerów telefonów i danych pracowników.</p>
+        <div class="settings-title"><span aria-hidden="true">⌾</span><div><h2 id="internalZoneTitle">Część wewnętrzna</h2><p>Logowanie, jednostki, ratownicy, alarmowanie PUSH/SMS i panel administracyjny są przygotowane jako osobny, chroniony moduł.</p></div></div>
+        <p class="context-hint">Ta publiczna wersja nie pobiera ani nie zawiera numerów telefonów i danych pracowników. Moduł wewnętrzny pokaże dane dopiero po zalogowaniu i sprawdzeniu roli w bazie.</p>
+        <a class="button primary full-width" href="internal/">OTWÓRZ BEZPIECZNE LOGOWANIE</a>
       </section>
 
       <section class="about-card">
