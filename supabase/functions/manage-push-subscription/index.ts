@@ -6,6 +6,7 @@ import {
   json,
   readJson,
   requireUser,
+  requireOrganizationAccess,
   ResponseError,
   safeError,
   validUuid
@@ -17,7 +18,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     assertPost(req)
-    const { user } = await requireUser(req)
+    const { user, scoped } = await requireUser(req)
     const body = await readJson(req)
 
     if (!validUuid(body.membershipId)) {
@@ -60,6 +61,7 @@ Deno.serve(async (req: Request) => {
     if (!membership) {
       throw new ResponseError(403, 'Tylko aktywny ratownik może zarejestrować to urządzenie.')
     }
+    await requireOrganizationAccess(scoped, membership.organization_id)
 
     const { data: subscriptionId, error: registrationError } = await admin
       .rpc('upsert_push_subscription', {

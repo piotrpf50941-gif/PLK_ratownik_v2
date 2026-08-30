@@ -20,7 +20,12 @@
   </header>
 
   <main class="shell">
-    <div id="offlineNotice" class="notice warning" role="status" hidden>OFFLINE — alarmowanie i zarządzanie wymagają internetu. <a href="../">Przejdź do procedur i narzędzi offline</a>.</div>
+    <div id="offlineNotice" class="notice warning" role="status" hidden>
+      <strong>BRAK POŁĄCZENIA Z SYSTEMEM ALARMOWYM</strong>
+      <p>OFFLINE — nie można wysłać nowego alarmu ani sprawdzić aktualnego statusu wcześniejszego zgłoszenia.</p>
+      <a class="button emergency" href="tel:112">📞 ZADZWOŃ 112</a>
+      <a class="button secondary" href="../">Procedury i narzędzia offline</a>
+    </div>
     <section id="configurationNotice" class="notice warning" hidden>
       <h1>Panel czeka na bezpieczne połączenie</h1>
       <p>Brakuje adresu projektu i klucza publikowalnego Supabase. To nie są sekrety, ale panel zacznie działać dopiero po ich uzupełnieniu w pliku <code>internal/config.js</code>.</p>
@@ -73,8 +78,12 @@
           <p class="eyebrow">ALARMOWANIE</p>
           <h2>Potrzebna pomoc ratowników?</h2>
           <p>Alarm wymaga potwierdzenia. W środowisku testowym nic nie jest wysyłane.</p>
+          <p>Alarm zakładowy nie zastępuje numeru 112. W przypadku zagrożenia życia wezwij ZRM.</p>
         </div>
-        <button id="openAlertButton" class="button emergency" type="button">🚨 WEZWIJ RATOWNIKÓW</button>
+        <div class="stack" role="group" aria-label="Wezwanie pomocy">
+          <a class="button emergency" href="tel:112">📞 ZADZWOŃ 112</a>
+          <button id="openAlertButton" class="button emergency" type="button">🚨 WEZWIJ RATOWNIKÓW</button>
+        </div>
       </section>
 
       <nav id="adminTabs" class="tabs" aria-label="Panel administracyjny">

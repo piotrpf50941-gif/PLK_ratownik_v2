@@ -56,7 +56,16 @@ function harness(file = 'dispatch-responder-alert', options = {}) {
     },
     async rpc(name, args) {
       state.rpcCalls.push({ name, args });
+      if (name === 'organization_access') {
+        if (state.accessQueryFails) return { data: null, error: { message: 'TEST access check failed' } };
+        const inScope = state.roles.filter(r => r.organization_id === args.target_organization_id || r.role === 'system_admin');
+        return { data: {
+          can_access: !state.ancestorInactive && !state.organizationInactive && inScope.length > 0,
+          can_manage: !state.ancestorInactive && inScope.some(r => ['unit_admin', 'system_admin'].includes(r.role))
+        }, error: null };
+      }
       if (name === 'reserve_incident') {
+        if (state.accessRevokedAtReservation) return { error: { message: 'access_denied' }, data: null };
         if (state.rateLimited) return { error: { message: 'rate_limited' }, data: null };
         const duplicate = state.rows.find(r => r.idempotency_key === args.target_key);
         if (duplicate) return { data: { ...duplicate, is_duplicate: true }, error: null };
@@ -166,5 +175,23 @@ await scenario('reject push SSRF target', async () => {
   const h = harness('manage-push-subscription');
   assert.equal((await h.request({ ...pushBody, subscription: { ...pushBody.subscription, endpoint: 'http://127.0.0.1/' } })).status, 400);
   assert.equal(h.state.rpcCalls.length, 0);
+});
+for (const [file, payload] of [['dispatch-responder-alert', body], ['manage-responder', invitation], ['manage-push-subscription', pushBody]]) {
+  await scenario(file + ' rejects disabled parent', async () => {
+    const h = harness(file, { ancestorInactive: true, roles: [{ organization_id: orgId, role: 'unit_admin' }] });
+    assert.equal((await h.request(payload)).status, 403);
+    assert.equal(h.state.invites.length + h.state.network.length + h.state.writes.length, 0);
+    assert.equal(h.state.rpcCalls.some(call => call.name !== 'organization_access'), false);
+  });
+}
+await scenario('failed access check fails closed', async () => {
+  const h = harness(undefined, { accessQueryFails: true });
+  assert.equal((await h.request()).status, 500);
+  assert.equal(h.state.network.length + h.state.rows.length, 0);
+});
+await scenario('revocation between API check and reservation', async () => {
+  const h = harness(undefined, { accessRevokedAtReservation: true });
+  assert.equal((await h.request()).status, 403);
+  assert.equal(h.state.network.length + h.state.rows.length, 0);
 });
 console.log('Test Edge Functions: OK (' + checks + ' scenariuszy, wyłącznie atrapy dostawców — bez wysyłki)');

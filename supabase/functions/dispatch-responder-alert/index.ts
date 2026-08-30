@@ -6,6 +6,7 @@ import {
   json,
   readJson,
   requireUser,
+  requireOrganizationAccess,
   ResponseError,
   safeError,
   validUuid
@@ -52,36 +53,6 @@ function mapUrl(latitude: number | null, longitude: number | null) {
   return 'https://www.google.com/maps?q=' + latitude + ',' + longitude
 }
 
-async function hasScopedAccess(
-  admin: ReturnType<typeof adminClient>,
-  memberships: Array<{ organization_id: string; role: string }>,
-  targetOrganizationId: string
-) {
-  if (memberships.some((membership) => membership.role === 'system_admin')) return true
-  if (memberships.some((membership) => membership.organization_id === targetOrganizationId)) return true
-
-  const administeredOrganizations = new Set(
-    memberships
-      .filter((membership) => membership.role === 'unit_admin')
-      .map((membership) => membership.organization_id)
-  )
-
-  let cursor: string | null = targetOrganizationId
-  for (let depth = 0; cursor && depth < 16; depth += 1) {
-    if (administeredOrganizations.has(cursor)) return true
-    const { data: organization, error } = await admin
-      .from('organizations')
-      .select('parent_id')
-      .eq('id', cursor)
-      .eq('active', true)
-      .maybeSingle()
-    if (error) throw error
-    cursor = organization ? organization.parent_id : null
-  }
-
-  return false
-}
-
 async function sendWebhook(url: string, token: string, body: unknown) {
   const target = new URL(url)
   if (target.protocol !== 'https:' || target.username || target.password) throw new Error('invalid_provider_url')
@@ -116,7 +87,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     assertPost(req)
-    const { user } = await requireUser(req)
+    const { user, scoped } = await requireUser(req)
     const body = await readJson(req)
 
     if (!validUuid(body.organizationId) || !validUuid(body.idempotencyKey)) {
@@ -138,19 +109,8 @@ Deno.serve(async (req: Request) => {
     if (body.location && (latitude === null || longitude === null)) {
       throw new ResponseError(400, 'Nieprawidłowe współrzędne GPS. Pobierz lokalizację ponownie albo wpisz miejsce ręcznie.')
     }
+    await requireOrganizationAccess(scoped, body.organizationId)
     const admin = adminClient()
-
-    const { data: memberships, error: membershipError } = await admin
-      .from('memberships')
-      .select('id,organization_id,role,organizations!inner(active)')
-      .eq('user_id', user.id)
-      .eq('active', true)
-      .eq('organizations.active', true)
-
-    if (membershipError) throw membershipError
-    if (!memberships || !await hasScopedAccess(admin, memberships, body.organizationId)) {
-      throw new ResponseError(403, 'Nie masz aktywnego przypisania ani zakresu administracyjnego dla tej jednostki.')
-    }
 
     const mode = Deno.env.get('NOTIFICATION_MODE') === 'production'
       ? 'production'
@@ -189,6 +149,9 @@ Deno.serve(async (req: Request) => {
     }
     if (incidentError && incidentError.message === 'idempotency_conflict') {
       throw new ResponseError(409, 'Ten identyfikator został już użyty dla innej jednostki.', 'idempotency_conflict')
+    }
+    if (incidentError && incidentError.message === 'access_denied') {
+      throw new ResponseError(403, 'Uprawnienia do jednostki zmieniły się. Alarm nie został uruchomiony.', 'organization_access_denied')
     }
     if (incidentError || !incident) throw incidentError || new Error('incident_not_created')
     if (incident.is_duplicate) {

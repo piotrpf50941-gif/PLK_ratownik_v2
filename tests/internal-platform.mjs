@@ -66,6 +66,8 @@ assert.match(app, /functions\.invoke\('manage-push-subscription'/);
 const rlsTables = [
   'organizations',
   'profiles',
+  'roles',
+  'user_work_contexts',
   'memberships',
   'responder_profiles',
   'incidents',
@@ -84,9 +86,15 @@ assert.match(sql, /grant execute on function public\.get_alert_recipients_for_di
 assert.match(sql, /grant execute on function public\.register_invited_responder\(uuid, uuid, text, text, text\[\], uuid\) to service_role;/);
 assert.match(sql, /grant execute on function public\.upsert_push_subscription\(uuid, text, text, text\) to service_role;/);
 assert.match(sql, /private\.is_system_admin\(\)\s+or role in \('employee', 'responder'\)/);
-assert.equal((sql.match(/security definer/gi) || []).length, 5, 'Tylko prywatne predykaty RLS mogą podnosić uprawnienia');
+assert.equal((sql.match(/security definer/gi) || []).length, 7, 'Wyłącznie sześć prywatnych predykatów RLS i trigger audytu podnoszą uprawnienia');
 assert.equal((sql.match(/set search_path = ''/g) || []).length >= 8, true);
-assert.equal((sql.match(/as \$\$/g) || []).length, (sql.match(/\$\$;/g) || []).length, 'Niesparowane ograniczniki funkcji SQL.');
+assert.equal((sql.match(/as \$\$/g) || []).length + (sql.match(/do \$\$/g) || []).length, (sql.match(/\$\$;/g) || []).length, 'Niesparowane ograniczniki funkcji SQL.');
+assert.match(sql, /view public\.sections with \(security_invoker = true\)/);
+assert.match(sql, /view public\.user_sections with \(security_invoker = true\)/);
+assert.match(sql, /grant execute on function public\.organization_access\(uuid\) to authenticated/);
+assert.match(sql, /grant execute on function public\.save_work_context\(uuid, uuid, uuid, uuid\) to service_role/);
+assert.match(common, /rpc\('organization_access'/);
+for (const handler of [dispatcher, manager, pushManager]) assert.match(handler, /requireOrganizationAccess\(scoped,/);
 
 assert.match(common, /@supabase\/supabase-js@2\.112\.4/);
 assert.match(common, /Cache-Control': 'no-store'/);

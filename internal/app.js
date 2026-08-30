@@ -9,6 +9,7 @@
   var memberships = [];
   var organizations = [];
   var currentOrganizationId = '';
+  var organizationAccess = null;
   var locationSnapshot = null;
   var counters = { responders: 0, availableResponders: 0, incidents: 0, organizations: 0, attention: 0 };
   var refreshSequence = 0;
@@ -121,7 +122,7 @@
       return;
     }
     setHidden('offlineNotice', true);
-    $('openAlertButton').disabled = !currentUser || !currentOrganizationId;
+    $('openAlertButton').disabled = !currentUser || !currentOrganizationId || !organizationAccess || !organizationAccess.can_access;
     badge.textContent = client ? 'ONLINE' : 'NIESKONFIGUROWANY';
     badge.className = client ? 'badge online' : 'badge muted';
   }
@@ -130,8 +131,8 @@
     return {
       employee: 'PRACOWNIK',
       responder: 'RATOWNIK',
-      unit_admin: 'ADMIN JEDNOSTKI',
-      system_admin: 'ADMIN SYSTEMU'
+      unit_admin: 'KOORDYNATOR JEDNOSTKI',
+      system_admin: 'ADMINISTRATOR'
     }[role] || 'PRACOWNIK';
   }
 
@@ -191,8 +192,7 @@
   }
 
   function canManageCurrentOrganization() {
-    var roles = activeRolesForCurrentOrganization();
-    return roles.indexOf('system_admin') >= 0 || roles.indexOf('unit_admin') >= 0;
+    return Boolean(organizationAccess && organizationAccess.can_access && organizationAccess.can_manage);
   }
 
   function highestRole() {
@@ -202,6 +202,7 @@
   }
 
   function responderMembershipForCurrentOrganization() {
+    if (!organizationAccess || !organizationAccess.can_access) return null;
     return memberships.find(function (membership) {
       return membership.active &&
         membership.role === 'responder' &&
@@ -241,10 +242,15 @@
 
   function updateRoleInterface() {
     var role = highestRole();
-    $('roleBadge').textContent = roleLabel(role);
+    $('roleBadge').textContent = organizationAccess ? roleLabel(role) : 'SPRAWDZANIE UPRAWNIEŃ';
     document.querySelectorAll('.admin-only').forEach(function (element) {
       element.hidden = !canManageCurrentOrganization();
     });
+    var selected = organizations.find(function (item) { return item.id === currentOrganizationId; });
+    var childKind = selected && { company: 'zlk', zlk: 'section', section: 'workplace' }[selected.kind];
+    Array.from($('organizationKind').options).forEach(function (option) { option.disabled = option.value !== childKind; });
+    $('organizationKind').value = childKind || '';
+    $('organizationForm').hidden = !canManageCurrentOrganization() || !childKind;
     updatePushInterface();
   }
 
@@ -257,6 +263,7 @@
     memberships = [];
     organizations = [];
     currentOrganizationId = '';
+    organizationAccess = null;
     locationSnapshot = null;
     alertDraft = null;
     clearLists();
@@ -346,28 +353,37 @@
     select.value = currentOrganizationId;
   }
 
+  async function readIdentityAccess(userId) {
+    var results = await Promise.all([
+      client.from('profiles').select('user_id,display_name,active').eq('user_id', userId).eq('active', true).maybeSingle(),
+      client.from('memberships').select('id,user_id,organization_id,role,active,organizations(id,name,code,kind,active)').eq('user_id', userId).eq('active', true)
+    ]);
+    results.forEach(function (result) { if (result.error) throw result.error; });
+    return { profile: results[0].data || null, memberships: results[1].data || [] };
+  }
+
   async function loadAccessContext(session) {
     viewSequence += 1;
     var sequence = ++refreshSequence;
     currentSession = session;
     currentUser = session.user;
+    organizationAccess = null;
     setHidden('loginSection', true);
     setHidden('configurationNotice', true);
     setHidden('internalApp', true);
     clearLists();
     try {
       var responses = await Promise.all([
-        client.from('profiles').select('user_id,display_name,active').eq('user_id', currentUser.id).eq('active', true).maybeSingle(),
-        client.from('memberships').select('id,user_id,organization_id,role,active,organizations(id,name,code,kind,active)').eq('user_id', currentUser.id).eq('active', true),
+        readIdentityAccess(currentUser.id),
         client.from('organizations').select('id,parent_id,name,code,kind,active').eq('active', true).order('name')
       ]);
       if (sequence !== refreshSequence) return;
       responses.forEach(function (response) {
         if (response.error) throw response.error;
       });
-      profile = responses[0].data || null;
-      memberships = responses[1].data || [];
-      organizations = responses[2].data || [];
+      profile = responses[0].profile;
+      memberships = responses[0].memberships;
+      organizations = responses[1].data || [];
 
       if (!profile || !memberships.length || !organizations.length) {
         setHidden('internalApp', true);
@@ -396,7 +412,7 @@
       setHidden('accessDeniedSection', true);
       setHidden('internalApp', false);
       updateConnectionBadge();
-      await refreshAll();
+      await refreshAll(true);
     } catch (error) {
       if (sequence !== refreshSequence) return;
       clearProtectedInterface();
@@ -414,6 +430,7 @@
     if (signOutRequested) return;
     if (currentUser && currentUser.id === session.user.id && memberships.length) {
       currentSession = session;
+      await refreshAll();
       return;
     }
     await loadAccessContext(session);
@@ -559,19 +576,45 @@
     }
   }
 
-  async function refreshAll() {
+  async function refreshAll(reuseAccess) {
     if (!client || !currentOrganizationId) return;
     viewSequence += 1;
     var context = viewContext();
+    organizationAccess = null;
+    updateRoleInterface();
+    updateConnectionBadge();
     clearLists();
     $('refreshButton').disabled = true;
     setStatus('panelStatus', 'Odświeżam dane jednostki…');
     try {
+      if (reuseAccess !== true) {
+        var identity = await readIdentityAccess(context.userId);
+        if (!isCurrentView(context)) return;
+        profile = identity.profile;
+        memberships = identity.memberships;
+        if (!profile || !memberships.length) {
+          clearProtectedInterface();
+          setHidden('accessDeniedSection', false);
+          return;
+        }
+      }
       await loadOrganizations(context);
       if (!isCurrentView(context)) return;
       if (!currentOrganizationId) {
         clearProtectedInterface();
         setHidden('accessDeniedSection', false);
+        return;
+      }
+      var permission = await client.rpc('organization_access', { target_organization_id: currentOrganizationId });
+      if (!isCurrentView(context)) return;
+      if (permission.error) throw permission.error;
+      organizationAccess = {
+        can_access: Boolean(permission.data && permission.data.can_access === true),
+        can_manage: Boolean(permission.data && permission.data.can_manage === true)
+      };
+      updateRoleInterface();
+      if (!organizationAccess.can_access) {
+        setStatus('panelStatus', 'Brak aktywnych uprawnień do wybranej jednostki lub wyłączono jej jednostkę nadrzędną. Wybierz inną zatwierdzoną jednostkę.', 'error');
         return;
       }
       await Promise.all([loadResponders(context), loadIncidents(context)]);
@@ -645,6 +688,7 @@
     var context = viewContext();
     var form = event.currentTarget;
     var data = new FormData(form);
+    if (!$('organizationKind').value) return;
     setStatus('organizationStatus', 'Zapisuję jednostkę…');
     form.querySelector('button[type="submit"]').disabled = true;
     try {
@@ -670,6 +714,10 @@
 
   function openAlertDialog() {
     if (!currentUser || !currentOrganizationId) return;
+    if (!organizationAccess || !organizationAccess.can_access) {
+      showToast('Najpierw potwierdź aktywne uprawnienia do jednostki. W razie zagrożenia dzwoń 112.');
+      return;
+    }
     if (alertDraft && alertDraft.submitting) {
       showToast('Poprzedni alarm jest jeszcze przetwarzany. Sprawdź jego wynik w historii.');
       return;

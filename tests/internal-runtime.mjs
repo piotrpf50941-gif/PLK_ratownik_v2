@@ -6,7 +6,7 @@ const html = readFileSync('internal/index.html', 'utf8');
 const app = readFileSync('internal/app.js', 'utf8');
 const uuid = n => '00000000-0000-4000-8000-' + String(n).padStart(12, '0');
 const userId = uuid(1), orgA = uuid(2), orgB = uuid(3), memberId = uuid(4);
-const organizations = [{ id: orgA, name: 'TEST A', code: 'A1', active: true, parent_id: null }, { id: orgB, name: 'TEST B', code: 'B1', active: true, parent_id: null }];
+const organizations = [{ id: orgA, name: 'TEST A', code: 'A1', kind: 'zlk', active: true, parent_id: null }, { id: orgB, name: 'TEST B', code: 'B1', kind: 'zlk', active: true, parent_id: null }];
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 async function settle() { for (let i = 0; i < 20; i += 1) await new Promise(resolve => setImmediate(resolve)); }
 const pages = [];
@@ -45,10 +45,11 @@ async function createPage(options = {}) {
       if (delay) return delay;
     }
     if (op.kind !== 'select') return { data: { id: uuid(7), membership_id: memberId }, error: null };
-    if (op.table === 'profiles') return { data: { user_id: userId, display_name: 'TEST Pracownik', active: true }, error: null };
+    if (op.table === 'profiles') return { data: state.profileRevoked ? null : { user_id: userId, display_name: 'TEST Pracownik', active: true }, error: null };
     if (op.table === 'organizations') return { data: state.organizations, error: null };
     if (op.table === 'incidents') return { data: [], error: null };
     if (op.table === 'memberships' && op.filters.some(f => f[0] === 'user_id')) {
+      if (state.membershipsRevoked) return { data: [], error: null };
       return { data: organizations.map(o => ({ id: memberId, user_id: userId, organization_id: o.id, role: state.role, active: true })), error: null };
     }
     if (op.table === 'memberships') {
@@ -59,6 +60,11 @@ async function createPage(options = {}) {
   }
   const client = {
     from: query,
+    async rpc(name, args) {
+      assert.equal(name, 'organization_access');
+      if (state.accessQueryFails) return { data: null, error: new Error('TEST kontrola dostępu niedostępna') };
+      return { data: { can_access: !state.scopeRevoked, can_manage: ['unit_admin', 'system_admin'].includes(state.role) }, error: null };
+    },
     functions: { async invoke(name, options) {
       state.functionCalls.push({ name, body: structuredClone(options.body) });
       if (state.invoke) return state.invoke(name, options);
@@ -76,7 +82,13 @@ async function createPage(options = {}) {
   w.RATOWNIK_INTERNAL_CONFIG = { supabaseUrl: 'https://test-project.supabase.co', supabasePublishableKey: 'sb_publishable_TEST_ONLY', notificationMode: 'simulation', vapidPublicKey: '', ...(options.config || {}) };
   w.eval(app);
   await settle();
-  return { $, w, state, errors, async auth(event, session) { onAuth(event, session); await settle(); }, async submit(id) { $(id).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true })); await settle(); }, async click(id) { $(id).click(); await settle(); } };
+  return { $, w, state, errors, async auth(event, session) {
+    onAuth(event, session);
+    // Obsługa sesji jest celowo odkładana poza callback Auth. Dajemy wykonać
+    // się timerom okna, nie tylko kolejce mikrozadań i setImmediate Node.js.
+    await new Promise(resolve => w.setTimeout(resolve, 0));
+    await settle();
+  }, async submit(id) { $(id).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true })); await settle(); }, async click(id) { $(id).click(); await settle(); } };
 }
 
 let checks = 0;
@@ -123,6 +135,7 @@ try {
     const mutation = p.state.queries.find(q => q.kind === 'insert');
     assert.equal(mutation.values.created_by, userId);
     assert.equal(mutation.values.parent_id, orgA);
+    assert.equal(mutation.values.kind, 'section', 'Pod zakładem tworzymy sekcję, nie kolejny zakład');
     assert.match(p.$('organizationStatus').textContent, /została dodana/);
   });
   await scenario('stale response from previous organization', async () => {
@@ -230,6 +243,63 @@ try {
     assert.equal(p.$('availabilityButton').hidden, false);
     await p.click('availabilityButton');
     assert.equal(p.state.queries.find(q => q.table === 'responder_profiles' && q.kind === 'update').values.available, false);
+  });
+  await scenario('coordinator role and allowed organization kinds', async () => {
+    const p = await createPage({ role: 'unit_admin' });
+    assert.equal(p.$('roleBadge').textContent, 'KOORDYNATOR JEDNOSTKI');
+    assert.equal(p.$('organizationKind').value, 'section');
+    assert.equal([...p.$('organizationKind').options].filter(option => !option.disabled).length, 1);
+    p.state.organizations = p.state.organizations.map(org => ({ ...org, kind: 'workplace' }));
+    await p.click('refreshButton');
+    assert.equal(p.$('organizationForm').hidden, true, 'Nie tworzymy kolejnych poziomów pod lokalizacją');
+  });
+  await scenario('scope verification disables actions and data', async () => {
+    const p = await createPage({ role: 'responder', scopeRevoked: true });
+    assert.equal(p.$('openAlertButton').disabled, true);
+    assert.equal(p.$('availabilityButton').hidden, true);
+    assert.equal(p.$('responderList').textContent, '');
+    assert.equal(p.$('incidentList').textContent, '');
+    assert.match(p.$('panelStatus').textContent, /jednostkę nadrzędną/);
+    assert.equal(p.state.queries.some(q => q.table === 'incidents'), false);
+  });
+  await scenario('access lookup failure does not enable alarm', async () => {
+    const p = await createPage({ accessQueryFails: true });
+    assert.equal(p.$('openAlertButton').disabled, true);
+    assert.match(p.$('panelStatus').textContent, /kontrola dostępu niedostępna/);
+    assert.equal(p.state.functionCalls.length, 0);
+  });
+  await scenario('role refresh removes old coordinator controls', async () => {
+    const p = await createPage({ role: 'unit_admin' });
+    p.state.role = 'employee';
+    await p.click('refreshButton');
+    assert.equal(p.$('roleBadge').textContent, 'PRACOWNIK');
+    assert.equal(p.$('inviteResponderForm').hidden, true);
+    assert.equal(p.$('organizationForm').hidden, true);
+    assert.equal(p.$('openAlertButton').disabled, false);
+  });
+  await scenario('revoked profile removes old private view', async () => {
+    const p = await createPage();
+    p.state.profileRevoked = true;
+    await p.click('refreshButton');
+    assert.equal(p.$('internalApp').hidden, true);
+    assert.equal(p.$('accessDeniedSection').hidden, false);
+    assert.equal(p.$('userEmail').textContent, '');
+    assert.equal(p.$('responderList').textContent, '');
+  });
+  await scenario('JWT refresh rechecks memberships', async () => {
+    const p = await createPage();
+    p.state.membershipsRevoked = true;
+    await p.auth('TOKEN_REFRESHED', { ...p.state.session, access_token: 'TEST-renewed-token' });
+    assert.equal(p.$('internalApp').hidden, true);
+    assert.equal(p.$('accessDeniedSection').hidden, false);
+  });
+  await scenario('offline keeps a clear 112 alternative', async () => {
+    const p = await createPage();
+    Object.defineProperty(p.w.navigator, 'onLine', { value: false, configurable: true });
+    p.w.dispatchEvent(new p.w.Event('offline'));
+    assert.match(p.$('offlineNotice').textContent, /BRAK POŁĄCZENIA Z SYSTEMEM ALARMOWYM/);
+    assert.equal(p.$('offlineNotice').querySelector('a[href="tel:112"]').classList.contains('button'), true);
+    assert.match(p.w.document.querySelector('.emergency-panel').textContent, /nie zastępuje numeru 112/);
   });
   console.log('Test interfejsu wewnętrznego: OK (' + checks + ' scenariuszy DOM, sesji, jednostek i alarmowania)');
 } finally {
