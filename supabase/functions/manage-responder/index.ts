@@ -27,9 +27,10 @@ function cleanCompetencies(value: unknown) {
 async function canManage(admin: ReturnType<typeof adminClient>, userId: string, organizationId: string) {
   const { data: roles, error: roleError } = await admin
     .from('memberships')
-    .select('organization_id,role')
+    .select('organization_id,role,organizations!inner(active)')
     .eq('user_id', userId)
     .eq('active', true)
+    .eq('organizations.active', true)
     .in('role', ['unit_admin', 'system_admin'])
 
   if (roleError) throw roleError
@@ -49,6 +50,7 @@ async function canManage(admin: ReturnType<typeof adminClient>, userId: string, 
       .from('organizations')
       .select('parent_id')
       .eq('id', cursor)
+      .eq('active', true)
       .maybeSingle()
     if (error) throw error
     cursor = organization ? organization.parent_id : null
@@ -78,6 +80,7 @@ Deno.serve(async (req: Request) => {
     const email = cleanText(body.email, 254, true).toLowerCase()
     const phoneE164 = cleanText(body.phoneE164, 20, false) || null
     const competencies = cleanCompetencies(body.competencies)
+    if (displayName.length < 2) throw new ResponseError(400, 'Imię i nazwisko musi mieć co najmniej 2 znaki.')
 
     if (!validEmail(email)) {
       throw new ResponseError(400, 'Nieprawidłowy służbowy adres e-mail.')
@@ -91,7 +94,15 @@ Deno.serve(async (req: Request) => {
       throw new ResponseError(403, 'Nie masz uprawnień do zarządzania ratownikami tej jednostki.')
     }
 
-    const redirectTo = Deno.env.get('INTERNAL_APP_URL') || undefined
+    const { data: organization, error: organizationError } = await admin
+      .from('organizations').select('id').eq('id', body.organizationId).eq('active', true).maybeSingle()
+    if (organizationError) throw organizationError
+    if (!organization) throw new ResponseError(404, 'Jednostka nie istnieje albo jest nieaktywna.')
+
+    const redirectTo = Deno.env.get('INTERNAL_APP_URL') || ''
+    if (!/^https:\/\//.test(redirectTo)) {
+      throw new ResponseError(503, 'Administrator musi skonfigurować adres powrotu z zaproszenia.')
+    }
     const { data: invitation, error: invitationError } = await admin.auth.admin.inviteUserByEmail(
       email,
       {
@@ -117,7 +128,9 @@ Deno.serve(async (req: Request) => {
         approving_user_id: user.id
       })
 
-    if (registrationError) throw registrationError
+    if (registrationError) {
+      throw new ResponseError(503, 'Zaproszenie e-mail utworzono, ale przypisanie do jednostki nie zostało zapisane. Administrator systemu musi naprawić przypisanie istniejącego konta.', 'invitation_needs_repair')
+    }
 
     return json({
       ok: true,

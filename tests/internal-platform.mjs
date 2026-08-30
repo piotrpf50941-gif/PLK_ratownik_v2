@@ -32,7 +32,8 @@ const common = readFileSync('supabase/functions/_shared/common.ts', 'utf8');
 const sw = readFileSync('sw.js', 'utf8');
 
 assert.match(html, /name="robots" content="noindex,nofollow,noarchive"/);
-assert.match(html, /@supabase\/supabase-js@2\.112\.4\/dist\/umd\/supabase\.min\.js/);
+assert.match(app, /@supabase\/supabase-js@2\.112\.4\/dist\/umd\/supabase\.min\.js/);
+assert.match(app, /script\.integrity = 'sha384-/);
 assert.doesNotMatch(html, /@supabase\/supabase-js@(latest|\^|~)/);
 assert.match(html, /id="loginSection"/);
 assert.match(html, /id="respondersPanel"/);
@@ -83,7 +84,7 @@ assert.match(sql, /grant execute on function public\.get_alert_recipients_for_di
 assert.match(sql, /grant execute on function public\.register_invited_responder\(uuid, uuid, text, text, text\[\], uuid\) to service_role;/);
 assert.match(sql, /grant execute on function public\.upsert_push_subscription\(uuid, text, text, text\) to service_role;/);
 assert.match(sql, /private\.is_system_admin\(\)\s+or role in \('employee', 'responder'\)/);
-assert.equal((sql.match(/security definer/gi) || []).length >= 6, true);
+assert.equal((sql.match(/security definer/gi) || []).length, 5, 'Tylko prywatne predykaty RLS mogą podnosić uprawnienia');
 assert.equal((sql.match(/set search_path = ''/g) || []).length >= 8, true);
 assert.equal((sql.match(/as \$\$/g) || []).length, (sql.match(/\$\$;/g) || []).length, 'Niesparowane ograniczniki funkcji SQL.');
 
@@ -92,7 +93,8 @@ assert.match(common, /Cache-Control': 'no-store'/);
 assert.match(dispatcher, /Deno\.env\.get\('NOTIFICATION_MODE'\) === 'production'/);
 assert.match(dispatcher, /SMS_WEBHOOK_URL/);
 assert.match(dispatcher, /PUSH_WEBHOOK_URL/);
-assert.match(dispatcher, /idempotency_key/);
+assert.match(dispatcher, /reserve_incident/);
+assert.match(dispatcher, /body\.expectedMode !== mode/);
 assert.match(dispatcher, /alarm_dispatched/);
 assert.match(dispatcher, /rate_limited/);
 assert.match(manager, /inviteUserByEmail/);

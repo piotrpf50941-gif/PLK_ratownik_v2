@@ -33,15 +33,27 @@ Deno.serve(async (req: Request) => {
     const endpoint = cleanText(subscription.endpoint, 2048, true)
     const p256dh = cleanText(keys.p256dh, 512, true)
     const authSecret = cleanText(keys.auth, 512, true)
+    const allowedHosts = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com']
+    let endpointUrl: URL
+    try { endpointUrl = new URL(endpoint) }
+    catch { throw new ResponseError(400, 'Nieprawidłowy adres subskrypcji PUSH.') }
+    if (endpointUrl.protocol !== 'https:' || endpointUrl.username || endpointUrl.password ||
+      endpointUrl.port || !allowedHosts.includes(endpointUrl.hostname)) {
+      throw new ResponseError(400, 'Nieobsługiwany dostawca subskrypcji PUSH. Skontaktuj się z administratorem.')
+    }
+    if (!/^[A-Za-z0-9_-]{87}=?$/.test(p256dh) || !/^[A-Za-z0-9_-]{22}={0,2}$/.test(authSecret)) {
+      throw new ResponseError(400, 'Nieprawidłowe klucze subskrypcji PUSH.')
+    }
     const admin = adminClient()
 
     const { data: membership, error: membershipError } = await admin
       .from('memberships')
-      .select('id,organization_id')
+      .select('id,organization_id,organizations!inner(active)')
       .eq('id', body.membershipId)
       .eq('user_id', user.id)
       .eq('role', 'responder')
       .eq('active', true)
+      .eq('organizations.active', true)
       .maybeSingle()
 
     if (membershipError) throw membershipError

@@ -73,6 +73,7 @@ async function hasScopedAccess(
       .from('organizations')
       .select('parent_id')
       .eq('id', cursor)
+      .eq('active', true)
       .maybeSingle()
     if (error) throw error
     cursor = organization ? organization.parent_id : null
@@ -82,6 +83,8 @@ async function hasScopedAccess(
 }
 
 async function sendWebhook(url: string, token: string, body: unknown) {
+  const target = new URL(url)
+  if (target.protocol !== 'https:' || target.username || target.password) throw new Error('invalid_provider_url')
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -89,6 +92,7 @@ async function sendWebhook(url: string, token: string, body: unknown) {
       Authorization: 'Bearer ' + token
     },
     body: JSON.stringify(body),
+    redirect: 'error',
     signal: AbortSignal.timeout(8000)
   })
   if (!response.ok) throw new Error('provider_http_' + response.status)
@@ -98,12 +102,17 @@ async function sendWebhook(url: string, token: string, body: unknown) {
   } catch {
     payload = {}
   }
-  return typeof payload.messageId === 'string' ? payload.messageId : null
+  if (payload.accepted !== true || typeof payload.messageId !== 'string' || !payload.messageId) {
+    throw new Error('provider_acceptance_not_confirmed')
+  }
+  return payload.messageId.slice(0, 200)
 }
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
   if (preflight) return preflight
+  let reservedIncidentId: string | null = null
+  let acceptedByProvider = false
 
   try {
     assertPost(req)
@@ -120,58 +129,36 @@ Deno.serve(async (req: Request) => {
     }
 
     const placeDescription = cleanText(body.placeDescription, 240, true)
+    if (placeDescription.length < 2) throw new ResponseError(400, 'Podaj dokładniejsze miejsce zdarzenia.')
     const note = cleanText(body.note, 500, false) || null
     const rawLocation = body.location && typeof body.location === 'object' ? body.location : {}
     const latitude = numberInRange(rawLocation.latitude, -90, 90)
     const longitude = numberInRange(rawLocation.longitude, -180, 180)
     const accuracy = numberInRange(rawLocation.accuracyMeters, 0, 100000)
+    if (body.location && (latitude === null || longitude === null)) {
+      throw new ResponseError(400, 'Nieprawidłowe współrzędne GPS. Pobierz lokalizację ponownie albo wpisz miejsce ręcznie.')
+    }
     const admin = adminClient()
 
     const { data: memberships, error: membershipError } = await admin
       .from('memberships')
-      .select('id,organization_id,role')
+      .select('id,organization_id,role,organizations!inner(active)')
       .eq('user_id', user.id)
       .eq('active', true)
+      .eq('organizations.active', true)
 
     if (membershipError) throw membershipError
     if (!memberships || !await hasScopedAccess(admin, memberships, body.organizationId)) {
       throw new ResponseError(403, 'Nie masz aktywnego przypisania ani zakresu administracyjnego dla tej jednostki.')
     }
 
-    const { data: duplicate, error: duplicateError } = await admin
-      .from('incidents')
-      .select('id,status,notification_mode')
-      .eq('created_by', user.id)
-      .eq('idempotency_key', body.idempotencyKey)
-      .maybeSingle()
-
-    if (duplicateError) throw duplicateError
-    if (duplicate) {
-      return json({
-        incidentId: duplicate.id,
-        status: duplicate.status,
-        mode: duplicate.notification_mode,
-        duplicate: true,
-        recipientCount: 0
-      })
-    }
-
-    const recentCutoff = new Date(Date.now() - 30000).toISOString()
-    const { data: recent, error: recentError } = await admin
-      .from('incidents')
-      .select('id')
-      .eq('created_by', user.id)
-      .gte('created_at', recentCutoff)
-      .limit(1)
-
-    if (recentError) throw recentError
-    if (recent && recent.length) {
-      throw new ResponseError(429, 'Odczekaj 30 sekund przed utworzeniem kolejnego alarmu.', 'rate_limited')
-    }
-
     const mode = Deno.env.get('NOTIFICATION_MODE') === 'production'
       ? 'production'
       : 'simulation'
+    // Ekran testowy nigdy nie może po cichu uruchomić wysyłki produkcyjnej.
+    if (body.expectedMode !== mode) {
+      throw new ResponseError(409, 'Tryb panelu nie zgadza się z trybem serwera. Administrator musi uzgodnić konfigurację.', 'mode_mismatch')
+    }
 
     const { data: organization, error: organizationError } = await admin
       .from('organizations')
@@ -185,24 +172,30 @@ Deno.serve(async (req: Request) => {
     }
 
     const { data: incident, error: incidentError } = await admin
-      .from('incidents')
-      .insert({
-        organization_id: body.organizationId,
-        created_by: user.id,
-        idempotency_key: body.idempotencyKey,
-        incident_type: incidentType,
-        place_description: placeDescription,
-        note,
-        latitude,
-        longitude,
-        accuracy_m: accuracy === null ? null : Math.round(accuracy),
-        status: 'dispatching',
-        notification_mode: mode
+      .rpc('reserve_incident', {
+        target_user_id: user.id,
+        target_organization_id: body.organizationId,
+        target_key: body.idempotencyKey,
+        target_type: incidentType,
+        target_place: placeDescription,
+        target_note: note,
+        target_latitude: latitude,
+        target_longitude: longitude,
+        target_accuracy: accuracy === null ? null : Math.round(accuracy),
+        target_mode: mode
       })
-      .select('id,created_at')
-      .single()
-
+    if (incidentError && incidentError.message === 'rate_limited') {
+      throw new ResponseError(429, 'Odczekaj 30 sekund przed utworzeniem kolejnego alarmu.', 'rate_limited')
+    }
+    if (incidentError && incidentError.message === 'idempotency_conflict') {
+      throw new ResponseError(409, 'Ten identyfikator został już użyty dla innej jednostki.', 'idempotency_conflict')
+    }
     if (incidentError || !incident) throw incidentError || new Error('incident_not_created')
+    if (incident.is_duplicate) {
+      const { count } = await admin.from('alert_recipients').select('id', { count: 'exact', head: true }).eq('incident_id', incident.id)
+      return json({ incidentId: incident.id, status: incident.status, mode: incident.notification_mode, duplicate: true, recipientCount: count })
+    }
+    reservedIncidentId = incident.id
 
     const { data: recipientData, error: recipientError } = await admin
       .rpc('get_alert_recipients_for_dispatch', {
@@ -292,9 +285,10 @@ Deno.serve(async (req: Request) => {
                 message
               })
               attempt.status = 'sent'
+              acceptedByProvider = true
             } catch (error) {
               attempt.status = 'failed'
-              attempt.error_code = error instanceof Error ? error.message.slice(0, 100) : 'push_failed'
+              attempt.error_code = 'push_provider_failed'
             }
           }
         }
@@ -320,9 +314,10 @@ Deno.serve(async (req: Request) => {
                 message
               })
               attempt.status = 'sent'
+              acceptedByProvider = true
             } catch (error) {
               attempt.status = 'failed'
-              attempt.error_code = error instanceof Error ? error.message.slice(0, 100) : 'sms_failed'
+              attempt.error_code = 'sms_provider_failed'
             }
           }
         }
@@ -352,7 +347,7 @@ Deno.serve(async (req: Request) => {
 
     if (statusError) throw statusError
 
-    await admin.from('audit_log').insert({
+    const { error: auditError } = await admin.from('audit_log').insert({
       actor_id: user.id,
       organization_id: body.organizationId,
       action: 'alarm_dispatched',
@@ -366,6 +361,8 @@ Deno.serve(async (req: Request) => {
         failed_count: failedCount
       }
     })
+    if (auditError) throw auditError
+    reservedIncidentId = null
 
     return json({
       incidentId: incident.id,
@@ -376,6 +373,12 @@ Deno.serve(async (req: Request) => {
       attemptCount: attempts.length
     })
   } catch (error) {
+    if (reservedIncidentId) {
+      // Nie zostawiaj alarmu bez końca w statusie dispatching po błędzie.
+      try {
+        await adminClient().from('incidents').update({ status: acceptedByProvider ? 'partial' : 'failed' }).eq('id', reservedIncidentId)
+      } catch { /* Ponowienie z tym samym kluczem nadal nie wysyła drugi raz. */ }
+    }
     return safeError(error)
   }
 })

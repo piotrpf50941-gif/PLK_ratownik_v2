@@ -15,6 +15,9 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 * { box-sizing: border-box; }
+body { overflow-wrap: anywhere; }
+input, select, textarea, .stack > *, .status-list dd { min-width: 0; }
+a { color: #9edcff; }
 html { min-height: 100%; background: var(--bg); }
 body {
   margin: 0;
@@ -241,7 +244,7 @@ input::placeholder, textarea::placeholder { color: #839aa9; }
 .status-list .ok { color: var(--green); }
 .status-list .push-row { align-items: center; }
 .status-list .push-row dd { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-.status-list .push-row .button { min-height: 42px; padding: 8px 12px; font-size: .78rem; }
+.status-list .push-row .button { min-height: 48px; padding: 8px 12px; font-size: .78rem; }
 .list { display: grid; gap: 11px; margin-bottom: 18px; }
 .list-item {
   display: grid;
@@ -321,6 +324,7 @@ code { color: #b8e6ff; }
 }
 @media (max-width: 480px) {
   .topbar { min-height: 68px; }
+  .topbar { gap: 8px; flex-wrap: wrap; }
   .brand img { width: 42px; height: 42px; }
   .brand strong { font-size: .9rem; }
   .brand small { font-size: .75rem; }
@@ -338,6 +342,8 @@ code { color: #b8e6ff; }
   .location-row { grid-template-columns: 1fr; }
   .status-list .push-row { grid-template-columns: 1fr; }
   .status-list .push-row dd { justify-content: flex-start; flex-wrap: wrap; }
+  .status-list div { grid-template-columns: 1fr; gap: 6px; }
+  .icon-button { flex-shrink: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }

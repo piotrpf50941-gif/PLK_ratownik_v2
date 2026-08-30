@@ -22,6 +22,13 @@ jobs:
     steps:
       - name: Pobierz kod
         uses: actions/checkout@v4
+      - name: Ustaw Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Zainstaluj wyłącznie zależności testów
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Sprawdź składnię JavaScript
         run: node --check app.js && node --check data.js && node --check sw.js && node --check internal/app.js
       - name: Uruchom testy integralności i DOM
@@ -29,7 +36,7 @@ jobs:
       - name: Sprawdź tryb offline i układ mobilny
         run: node tests/offline.mjs && node tests/mobile-layout.mjs
       - name: Sprawdź bezpieczeństwo panelu wewnętrznego
-        run: node tests/internal-platform.mjs
+        run: node tests/internal-platform.mjs && node tests/database.mjs && node tests/edge-runtime.mjs && node tests/internal-runtime.mjs
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -46,9 +53,14 @@ jobs:
         with:
           enablement: true
       - name: Przygotuj artefakt
+        run: |
+          mkdir -p _site
+          cp index.html app.js data.js styles.css sw.js manifest.webmanifest .nojekyll _site/
+          cp -R assets internal _site/
+      - name: Prześlij wyłącznie pliki aplikacji
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - name: Opublikuj
         id: deployment
         uses: actions/deploy-pages@v4

@@ -1,6 +1,6 @@
 # Ratownik PLK v2
 
-Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.6.0**.
+Wersja porównawcza aplikacji **Ratownik PLK**, rozwijana iteracyjnie z naciskiem na prostotę obsługi na telefonie i szybkie działanie w stresie. Aktualna wersja aplikacji: **2.6.1**.
 
 ## Najważniejsza zmiana
 
@@ -51,25 +51,24 @@ Następnie otwórz `http://localhost:8080`.
 
 ## Testy
 
-Testy nie wymagają instalowania bibliotek:
+Testy publicznej PWA można uruchomić bez bibliotek. Pełny zestaw obejmuje też wykonanie SQL w izolowanym PostgreSQL oraz testy panelu i funkcji serwerowych z atrapami usług:
 
 ```bash
-node --check app.js
-node --check data.js
-node --check sw.js
-python3 tests/validate.py
-node tests/smoke.mjs
-node tests/offline.mjs
-node tests/mobile-layout.mjs
+npm ci --ignore-scripts
+npm test
 ```
 
 ## Publikacja
 
-Workflow GitHub Actions publikuje zawartość gałęzi `main` w GitHub Pages. W ustawieniach repozytorium wybierz **Settings → Pages → Source: GitHub Actions**.
+Workflow GitHub Actions testuje PR oraz gałąź `main`. Publikacja następuje tylko po pozytywnych testach i obejmuje wyłącznie pliki aplikacji, bez testów, zależności i kodu backendu. W ustawieniach repozytorium wybierz **Settings → Pages → Source: GitHub Actions**.
 
 Docelowy adres po publikacji:
 
-`https://piotrpf50941-gif.github.io/PLK_ratownik_v2/`
+[Otwórz aplikację](https://piotrpf50941-gif.github.io/PLK_ratownik_v2/).
+
+Na telefonie: otwórz adres w Chrome/Safari, odśwież aplikację i wybierz instalację / dodanie do ekranu głównego. Po pierwszym pełnym załadowaniu przetestuj procedury, „Prowadź mnie” i narzędzia w trybie samolotowym. Nie uruchamiaj rzeczywistego połączenia 112 podczas testu. Zakładka Zasoby → Ratownicy prowadzi do części wewnętrznej, która wymaga osobnej konfiguracji opisanej w `internal/README.md`.
+
+Raport ostatniej kontroli i dalsze kroki: [Kontynuacja 30.08.2026](docs/KONTYNUACJA_2026-08-30.md).
 
 ## Ważne
 

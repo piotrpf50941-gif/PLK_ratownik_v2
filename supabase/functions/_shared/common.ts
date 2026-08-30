@@ -6,7 +6,8 @@ function keyFromJson(variableName: string): string {
   if (!raw) return ''
   try {
     const parsed = JSON.parse(raw)
-    return parsed.default || Object.values(parsed)[0] || ''
+    const value = parsed.default || Object.values(parsed)[0]
+    return typeof value === 'string' ? value : ''
   } catch {
     return ''
   }
@@ -14,12 +15,14 @@ function keyFromJson(variableName: string): string {
 
 function publishableKey(): string {
   return keyFromJson('SUPABASE_PUBLISHABLE_KEYS') ||
+    Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ||
     Deno.env.get('SUPABASE_ANON_KEY') ||
     ''
 }
 
 function secretKey(): string {
   return keyFromJson('SUPABASE_SECRET_KEYS') ||
+    Deno.env.get('SUPABASE_SECRET_KEY') ||
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ||
     ''
 }
@@ -51,9 +54,13 @@ export async function requireUser(req: Request) {
   })
   const token = authorization.slice(7)
   const { data, error } = await scoped.auth.getUser(token)
-  if (error || !data.user) {
+  if (error || !data.user || data.user.is_anonymous) {
     throw new ResponseError(401, 'Sesja wygasła albo jest nieprawidłowa.')
   }
+  const { data: profile, error: profileError } = await scoped
+    .from('profiles').select('user_id').eq('user_id', data.user.id).eq('active', true).maybeSingle()
+  if (profileError) throw profileError
+  if (!profile) throw new ResponseError(403, 'Konto nie ma aktywnych uprawnień.')
   return { user: data.user, scoped }
 }
 
@@ -99,7 +106,9 @@ export function assertPost(req: Request) {
 
 export async function readJson(req: Request) {
   try {
-    return await req.json()
+    const value = await req.json()
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_body')
+    return value
   } catch {
     throw new ResponseError(400, 'Nieprawidłowe dane żądania.')
   }
@@ -121,6 +130,7 @@ export function safeError(error: unknown) {
   if (error instanceof ResponseError) {
     return json({ error: error.code, message: error.message }, error.status)
   }
-  console.error(error)
+  // Nie loguj żądań, numerów telefonów, endpointów PUSH ani treści zdarzenia.
+  console.error('internal_error', error instanceof Error ? error.name : 'database_or_provider_error')
   return json({ error: 'internal_error', message: 'Wystąpił błąd serwera.' }, 500)
 }

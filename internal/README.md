@@ -12,12 +12,15 @@ Ten katalog zawiera uwierzytelnioną część aplikacji: jednostki, ratowników,
 - alarm z dwustopniowym potwierdzeniem, GPS i kluczem idempotencji;
 - tryb simulation, który zapisuje alarm i audyt, ale niczego nie wysyła;
 - rejestracja urządzenia PUSH dostępna wyłącznie dla zalogowanego ratownika;
+- potwierdzanie własnej gotowości do odbierania alarmów;
 - adaptery PUSH/SMS uruchamiane wyłącznie po stronie funkcji serwerowej;
 - brak danych osobowych i sekretów w repozytorium.
 
 ## 1. Utwórz środowisko testowe Supabase
 
 Najpierw utwórz osobny projekt test. Projektu produkcyjnego nie podłączaj przed zatwierdzeniem klasyfikacji danych, hostingu, SSO oraz dostawców wiadomości.
+
+Blueprint SQL jest przeznaczony dla pustego projektu testowego. Nie uruchamiaj go jako zamiennika migracji istniejącej bazy z danymi. Nie wykonuj resetu bazy zdalnej. Polecenie `db reset` poniżej dotyczy wyłącznie lokalnego środowiska Docker uruchomionego przez Supabase CLI; usuwa jego dane testowe.
 
 W katalogu repozytorium:
 
@@ -27,6 +30,7 @@ W katalogu repozytorium:
 
 Skopiuj zawartość pliku supabase/internal-platform.sql do utworzonego pliku migracji, a następnie wykonaj:
 
+    supabase start
     supabase db reset
     supabase db lint
     supabase db push
@@ -44,6 +48,18 @@ W Supabase Auth:
 5. produkcyjnie podłącz firmowy Microsoft Entra ID/OIDC, jeżeli dopuści to polityka PKP PLK.
 
 Panel wysyła shouldCreateUser: false, więc nie tworzy konta przez samo wpisanie e-maila.
+
+### Ważne: szablony wiadomości
+
+Zwykłe zaproszenie administratora nie korzysta z PKCE. Aby przyjęcie zaproszenia działało również na telefonie, w **Auth → Email Templates → Invite user** umieść odnośnik:
+
+```html
+<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=invite">Przyjmij zaproszenie do Ratownika PLK</a>
+```
+
+W **Magic Link** użyj analogicznego odnośnika z `type=email`. Panel wymienia jednorazowy token przez `auth.verifyOtp` i usuwa token z adresu przed pobieraniem danych. `INTERNAL_APP_URL` i Redirect URL muszą wskazywać dokładnie katalog `/internal/` (bez własnego query string).
+
+Podstawa konfiguracji: [Supabase — logowanie e-mail](https://supabase.com/docs/guides/auth/auth-email-passwordless) i [szablony wiadomości](https://supabase.com/docs/guides/auth/auth-email-templates). Nie wpisuj tokenów ani haseł do repozytorium lub rozmowy.
 
 ## 3. Dodaj pierwszego administratora
 
@@ -96,16 +112,17 @@ Najpierw ustaw tryb bez wysyłki:
 
 Funkcje mają włączone verify_jwt. Ratownik rejestruje subskrypcję PUSH przyciskiem WŁĄCZ PUSH; endpoint i klucze subskrypcji trafiają do prywatnego schematu bazy, a nie do publicznego API.
 
-Funkcje Dodatkowo same ponownie sprawdzają użytkownika, rolę i zakres jednostki.
+Funkcje dodatkowo sprawdzają użytkownika, aktywność profilu, rolę i zakres jednostki. Tryb `notificationMode` panelu musi zgadzać się z `NOTIFICATION_MODE` serwera; niezgodność blokuje alarm, zanim nastąpi wysyłka.
 
 ## 6. Test alarmu bez SMS
 
-1. Zaloguj się kontem pracownika przypisanym do jednostki.
-2. Wybierz WEZWIJ RATOWNIKÓW.
-3. Wpisz testowe miejsce oznaczone słowem TEST.
-4. Potwierdź alarm.
+1. Zaloguj się testowym ratownikiem, zgłoś gotowość i skonfiguruj testowy kanał kontaktu. Nowo zaproszona osoba nie jest automatycznie uznawana za dostępną.
+2. Zaloguj się kontem pracownika przypisanym do tej jednostki.
+3. Wybierz WEZWIJ RATOWNIKÓW.
+4. Wpisz testowe miejsce oznaczone słowem TEST i potwierdź alarm.
 5. Sprawdź incidents, alert_recipients, delivery_attempts i audit_log.
-6. Status powinien mieć wartość simulated. Żadne żądanie do dostawcy PUSH/SMS nie powinno wyjść.
+6. Status powinien mieć wartość simulated. Żadne żądanie do dostawcy PUSH/SMS nie powinno wyjść. Przy braku dostępnych odbiorców poprawnym wynikiem jest czytelny błąd, a nie komunikat o sukcesie.
+7. Sprawdź drugą jednostkę: jej dane nie mogą być widoczne bez uprawnień. Wyłączony profil nie może korzystać z API mimo starego tokenu.
 
 ## 7. Produkcyjne PUSH/SMS
 
@@ -117,6 +134,23 @@ Produkcję można włączyć dopiero po zatwierdzeniu dostawcy, umowy powierzeni
 
 Adapter wysyła do zatwierdzonej bramy komunikat zawierający jednostkę, rodzaj zdarzenia, miejsce, identyfikator alarmu i opcjonalny odnośnik GPS. Nie przesyła notatki opisowej. Wynik każdej próby zapisuje w delivery_attempts.
 
+Kontrakt bramy: HTTPS, brak przekierowań, nagłówek Bearer, odpowiedź JSON `{"accepted":true,"messageId":"identyfikator-dostawcy"}`. Sam HTTP 200 nie jest potwierdzeniem. Status `sent` oznacza przyjęcie przez bramę, nie dostarczenie ani reakcję człowieka. SMS jest obecnie dodatkowym kanałem, a nie automatycznym ponowieniem po potwierdzonym braku odbioru PUSH.
+
+PUSH w przeglądarkach Chrome/Firefox/Safari korzysta z listy dozwolonych hostów w `manage-push-subscription`; rozszerzenie o innego dostawcę wymaga przeglądu bezpieczeństwa. Ekran blokady pokazuje tylko ogólny komunikat. Lokalizacja i opis są dostępne po zalogowaniu w historii alarmów. Wylogowanie unieważnia subskrypcję na tym telefonie, a późniejsza rejestracja przenosi powiązanie urządzenia na aktualne konto.
+
+Przed produkcją pozostają: zatwierdzenie dostawcy/retencji, kolejka wysyłkowa i monitoring utkniętych alarmów, potwierdzenia dostarczenia/reakcji, limity kosztów oraz próby na rzeczywistych urządzeniach. Nie traktuj tego etapu jako uruchomionego systemu alarmowania operacyjnego.
+
+## Testy automatyczne bez usług zewnętrznych
+
+```sh
+npm ci --ignore-scripts
+npm test
+```
+
+Test SQL używa PostgreSQL w pamięci (PGlite), a testy interfejsu i Edge Functions korzystają wyłącznie z atrap Auth/API/PUSH/SMS. Wykonują rzeczywisty kod aplikacji. Nie zastępują testu integracji na osobnym projekcie Supabase ani kontroli na fizycznym telefonie.
+
 ## Ważna granica
 
 GitHub Pages może służyć jako demonstracyjny adres ekranu logowania, lecz produkcyjna część wewnętrzna powinna otrzymać osobne wdrożenie HTTPS i domenę. Publiczny Service Worker nie buforuje tras panelu ani odpowiedzi Supabase.
+
+Na hostingu produkcyjnym ustaw nagłówki `Cache-Control: no-store` dla części wewnętrznej i `Content-Security-Policy: frame-ancestors 'none'`. Ochrony przed osadzaniem w ramce nie da się uzyskać przez znacznik meta CSP. Standardowa sesja Supabase jest utrwalana w pamięci przeglądarki; wybór okresu ważności, SSO/MFA i zasad używania wspólnych urządzeń wymaga zatwierdzenia przed danymi rzeczywistymi.

@@ -13,13 +13,13 @@ grant usage on schema private to authenticated;
 
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
-  parent_id uuid references public.organizations(id) on delete restrict,
+  parent_id uuid references public.organizations(id) on delete restrict check (parent_id is distinct from id),
   name text not null check (char_length(name) between 2 and 160),
   code text not null unique check (char_length(code) between 2 and 40),
   kind text not null check (kind in ('company', 'zlk', 'section', 'workplace')),
   active boolean not null default true,
   created_at timestamptz not null default now(),
-  created_by uuid references auth.users(id),
+  created_by uuid references auth.users(id) default auth.uid(),
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id)
 );
@@ -47,7 +47,7 @@ create table if not exists public.memberships (
 
 create table if not exists public.responder_profiles (
   membership_id uuid primary key references public.memberships(id) on delete cascade,
-  available boolean not null default true,
+  available boolean not null default false,
   competencies text[] not null default array[]::text[],
   last_confirmed_at timestamptz,
   updated_at timestamptz not null default now()
@@ -126,6 +126,7 @@ create index if not exists memberships_user_active_idx on public.memberships(use
 create index if not exists memberships_org_role_idx on public.memberships(organization_id, role, active);
 create index if not exists organizations_parent_idx on public.organizations(parent_id);
 create index if not exists incidents_org_created_idx on public.incidents(organization_id, created_at desc);
+create index if not exists incidents_author_created_idx on public.incidents(created_by, created_at desc);
 create index if not exists alert_recipients_incident_idx on public.alert_recipients(incident_id);
 create index if not exists delivery_attempts_incident_idx on public.delivery_attempts(incident_id);
 create index if not exists audit_log_org_created_idx on public.audit_log(organization_id, created_at desc);
@@ -158,6 +159,19 @@ drop trigger if exists responder_profiles_set_updated_at on public.responder_pro
 create trigger responder_profiles_set_updated_at before update on public.responder_profiles
 for each row execute function private.set_updated_at();
 
+create or replace function private.is_active_user()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (select auth.uid()) is not null and exists (
+    select 1 from public.profiles
+    where user_id = (select auth.uid()) and active
+  );
+$$;
+
 create or replace function private.is_system_admin()
 returns boolean
 language sql
@@ -166,10 +180,11 @@ security definer
 set search_path = ''
 as $$
   select case
-    when (select auth.uid()) is null then false
+    when not private.is_active_user() then false
     else exists (
       select 1
       from public.memberships m
+      join public.organizations o on o.id = m.organization_id and o.active
       where m.user_id = (select auth.uid())
         and m.role = 'system_admin'
         and m.active
@@ -185,7 +200,8 @@ security definer
 set search_path = ''
 as $$
   select case
-    when (select auth.uid()) is null then false
+    when not private.is_active_user() then false
+    when not exists (select 1 from public.organizations where id = target_organization_id and active) then false
     when private.is_system_admin() then true
     else
       exists (
@@ -199,11 +215,12 @@ as $$
         with recursive ancestry as (
           select o.id, o.parent_id
           from public.organizations o
-          where o.id = target_organization_id
-          union all
+          where o.id = target_organization_id and o.active
+          union
           select parent.id, parent.parent_id
           from public.organizations parent
           join ancestry child on child.parent_id = parent.id
+          where parent.active
         )
         select 1
         from public.memberships m
@@ -223,17 +240,18 @@ security definer
 set search_path = ''
 as $$
   select case
-    when (select auth.uid()) is null then false
+    when not private.is_active_user() then false
     when private.is_system_admin() then true
     else exists (
       with recursive ancestry as (
         select o.id, o.parent_id
         from public.organizations o
-        where o.id = target_organization_id
-        union all
+        where o.id = target_organization_id and o.active
+        union
         select parent.id, parent.parent_id
         from public.organizations parent
         join ancestry child on child.parent_id = parent.id
+        where parent.active
       )
       select 1
       from public.memberships m
@@ -253,7 +271,7 @@ security definer
 set search_path = ''
 as $$
   select case
-    when (select auth.uid()) is null then false
+    when not private.is_active_user() then false
     when target_user_id = (select auth.uid()) then true
     when private.is_system_admin() then true
     else exists (
@@ -280,6 +298,7 @@ revoke all on all functions in schema private from public;
 revoke all on all functions in schema private from anon;
 revoke all on all functions in schema private from authenticated;
 grant execute on function private.set_updated_at() to authenticated;
+grant execute on function private.is_active_user() to authenticated;
 grant execute on function private.is_system_admin() to authenticated;
 grant execute on function private.can_view_organization(uuid) to authenticated;
 grant execute on function private.can_manage_organization(uuid) to authenticated;
@@ -293,11 +312,17 @@ alter table public.incidents enable row level security;
 alter table public.alert_recipients enable row level security;
 alter table public.delivery_attempts enable row level security;
 alter table public.audit_log enable row level security;
+alter table private.responder_contacts enable row level security;
+alter table private.push_subscriptions enable row level security;
 
 drop policy if exists organizations_select on public.organizations;
 create policy organizations_select on public.organizations
 for select to authenticated
-using (private.can_view_organization(id));
+using (
+  private.can_view_organization(id)
+  -- INSERT ... RETURNING musi widzieć nowy wiersz przed zmianą snapshotu funkcji STABLE.
+  or (active and private.can_manage_organization(parent_id))
+);
 
 drop policy if exists organizations_insert on public.organizations;
 create policy organizations_insert on public.organizations
@@ -330,15 +355,15 @@ using (private.can_view_user(user_id));
 drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self on public.profiles
 for update to authenticated
-using (user_id = (select auth.uid()))
-with check (user_id = (select auth.uid()));
+using (user_id = (select auth.uid()) and private.is_active_user())
+with check (user_id = (select auth.uid()) and private.is_active_user());
 
 drop policy if exists memberships_select on public.memberships;
 create policy memberships_select on public.memberships
 for select to authenticated
 using (
-  user_id = (select auth.uid())
-  or private.can_view_organization(organization_id)
+  private.is_active_user()
+  and (user_id = (select auth.uid()) or private.can_view_organization(organization_id))
 );
 
 drop policy if exists memberships_insert on public.memberships;
@@ -399,6 +424,7 @@ with check (
   exists (
     select 1 from public.memberships m
     where m.id = membership_id
+      and m.active and m.role = 'responder'
       and private.can_manage_organization(m.organization_id)
   )
 );
@@ -410,6 +436,7 @@ using (
   exists (
     select 1 from public.memberships m
     where m.id = membership_id
+      and m.active and m.role = 'responder' and private.is_active_user()
       and (
         m.user_id = (select auth.uid())
         or private.can_manage_organization(m.organization_id)
@@ -420,6 +447,7 @@ with check (
   exists (
     select 1 from public.memberships m
     where m.id = membership_id
+      and m.active and m.role = 'responder' and private.is_active_user()
       and (
         m.user_id = (select auth.uid())
         or private.can_manage_organization(m.organization_id)
@@ -431,23 +459,12 @@ drop policy if exists incidents_select on public.incidents;
 create policy incidents_select on public.incidents
 for select to authenticated
 using (
-  created_by = (select auth.uid())
-  or private.can_view_organization(organization_id)
+  private.can_view_organization(organization_id)
 );
 
+-- Alarmy i ich statusy może zapisywać wyłącznie zweryfikowana funkcja serwerowa.
 drop policy if exists incidents_insert on public.incidents;
-create policy incidents_insert on public.incidents
-for insert to authenticated
-with check (
-  created_by = (select auth.uid())
-  and private.can_view_organization(organization_id)
-);
-
 drop policy if exists incidents_update on public.incidents;
-create policy incidents_update on public.incidents
-for update to authenticated
-using (private.can_manage_organization(organization_id))
-with check (private.can_manage_organization(organization_id));
 
 drop policy if exists alert_recipients_select on public.alert_recipients;
 create policy alert_recipients_select on public.alert_recipients
@@ -482,17 +499,32 @@ using (
 );
 
 grant usage on schema public to authenticated;
-grant select, insert, update on public.organizations to authenticated;
-grant select, update on public.profiles to authenticated;
-grant select, insert, update, delete on public.memberships to authenticated;
-grant select, insert, update on public.responder_profiles to authenticated;
-grant select, insert, update on public.incidents to authenticated;
+-- Nie polegamy na domyślnych grantach konkretnego projektu Supabase.
+revoke all on public.organizations, public.profiles, public.memberships,
+  public.responder_profiles, public.incidents, public.alert_recipients,
+  public.delivery_attempts, public.audit_log from public, anon, authenticated;
+grant select, insert on public.organizations to authenticated;
+-- Zmiana rodzica i identyfikatora wymaga kontrolowanej operacji serwerowej.
+grant update (name, code, active, updated_at, updated_by) on public.organizations to authenticated;
+grant select on public.profiles to authenticated;
+grant update (display_name) on public.profiles to authenticated;
+grant select, insert, delete on public.memberships to authenticated;
+grant update (active) on public.memberships to authenticated;
+grant select, insert on public.responder_profiles to authenticated;
+grant update (available, last_confirmed_at) on public.responder_profiles to authenticated;
+grant select on public.incidents to authenticated;
 grant select on public.alert_recipients to authenticated;
 grant select on public.delivery_attempts to authenticated;
 grant select on public.audit_log to authenticated;
 
 revoke all on private.responder_contacts from public, anon, authenticated;
 revoke all on private.push_subscriptions from public, anon, authenticated;
+grant usage on schema public, private to service_role;
+grant select, insert, update on public.organizations, public.profiles, public.memberships,
+  public.responder_profiles, public.incidents, public.alert_recipients,
+  public.delivery_attempts, public.audit_log, private.responder_contacts,
+  private.push_subscriptions to service_role;
+grant usage, select on sequence public.audit_log_id_seq to service_role;
 
 create or replace function public.get_alert_recipients_for_dispatch(target_organization_id uuid)
 returns table (
@@ -504,7 +536,7 @@ returns table (
 )
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
   select
@@ -524,6 +556,8 @@ as $$
       '[]'::jsonb
     )
   from public.memberships m
+  join public.profiles person on person.user_id = m.user_id and person.active
+  join public.organizations organization on organization.id = m.organization_id and organization.active
   join public.responder_profiles r
     on r.membership_id = m.id
    and r.available
@@ -545,7 +579,7 @@ create or replace function public.upsert_responder_contact(
 )
 returns void
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 begin
@@ -572,7 +606,7 @@ create or replace function public.register_invited_responder(
 )
 returns uuid
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -590,21 +624,7 @@ begin
   if char_length(trim(target_display_name)) not between 2 and 120 then
     raise exception 'invalid display name';
   end if;
-  if target_phone_e164 is not null and target_phone_e164 !~ '^\+[1-9][0-9]{7,14}
-revoke all on function public.upsert_responder_contact(uuid, text, boolean) from public, anon, authenticated;
-grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
-grant execute on function public.upsert_responder_contact(uuid, text, boolean) to service_role;
-grant execute on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) to service_role;
-grant execute on function public.upsert_push_subscription(uuid, text, text, text) to service_role;
-
-commit;
-
--- Pierwsze uruchomienie:
--- 1. Utwórz konto właściciela w Supabase Auth.
--- 2. W SQL Editor dodaj profil, organizację główną i członkostwo system_admin.
--- 3. Nie używaj user_metadata jako źródła uprawnień.
--- 4. Po wdrożeniu uruchom Security Advisor i sprawdź wszystkie ostrzeżenia.
- then
+  if target_phone_e164 is not null and target_phone_e164 !~ '^\+[1-9][0-9]{7,14}$' then
     raise exception 'invalid phone format';
   end if;
 
@@ -646,12 +666,12 @@ commit;
   )
   values (
     new_membership_id,
-    true,
+    false,
     coalesce(target_competencies, array[]::text[]),
     now()
   )
   on conflict (membership_id) do update
-  set available = true,
+  set available = false,
       competencies = excluded.competencies,
       last_confirmed_at = now(),
       updated_at = now();
@@ -700,7 +720,7 @@ create or replace function public.upsert_push_subscription(
 )
 returns uuid
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -714,11 +734,19 @@ begin
   ) then
     raise exception 'active responder membership not found';
   end if;
-  if char_length(target_endpoint) not between 10 and 2048
+  if target_endpoint !~ '^https://'
+    or char_length(target_endpoint) not between 10 and 2048
     or char_length(target_p256dh) not between 10 and 512
     or char_length(target_auth_secret) not between 6 and 512 then
     raise exception 'invalid push subscription';
   end if;
+
+  -- Wspólny telefon nie może po zmianie konta odbierać alarmów poprzedniego użytkownika.
+  update private.push_subscriptions p set active = false
+  where p.endpoint = target_endpoint and p.membership_id in (
+    select previous.id from public.memberships previous
+    where previous.user_id <> (select current_member.user_id from public.memberships current_member where current_member.id = target_membership_id)
+  );
 
   insert into private.push_subscriptions (
     membership_id,
@@ -745,12 +773,67 @@ begin
 end;
 $$;
 
+-- Rezerwacja alarmu i ograniczenie częstotliwości w jednej transakcji.
+-- Powtórzenie żądania z tym samym kluczem nigdy nie uruchamia drugiej wysyłki.
+create or replace function public.reserve_incident(
+  target_user_id uuid,
+  target_organization_id uuid,
+  target_key uuid,
+  target_type text,
+  target_place text,
+  target_note text,
+  target_latitude numeric,
+  target_longitude numeric,
+  target_accuracy integer,
+  target_mode text
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  saved public.incidents%rowtype;
+begin
+  if target_user_id is null or target_key is null then
+    raise exception 'invalid_request';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(target_user_id::text, 0));
+  select * into saved from public.incidents
+  where created_by = target_user_id and idempotency_key = target_key;
+  if found then
+    if saved.organization_id <> target_organization_id then
+      raise exception 'idempotency_conflict';
+    end if;
+    return to_jsonb(saved) || jsonb_build_object('is_duplicate', true);
+  end if;
+  if exists (
+    select 1 from public.incidents
+    where created_by = target_user_id and created_at > now() - interval '30 seconds'
+  ) then
+    raise exception 'rate_limited';
+  end if;
+  insert into public.incidents (
+    created_by, organization_id, idempotency_key, incident_type, place_description,
+    note, latitude, longitude, accuracy_m, notification_mode, status
+  ) values (
+    target_user_id, target_organization_id, target_key, target_type, target_place,
+    target_note, target_latitude, target_longitude, target_accuracy, target_mode, 'dispatching'
+  ) returning * into saved;
+  return to_jsonb(saved) || jsonb_build_object('is_duplicate', false);
+end;
+$$;
+
 revoke all on function public.get_alert_recipients_for_dispatch(uuid) from public, anon, authenticated;
 revoke all on function public.upsert_push_subscription(uuid, text, text, text) from public, anon, authenticated;
 revoke all on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) from public, anon, authenticated;
 revoke all on function public.upsert_responder_contact(uuid, text, boolean) from public, anon, authenticated;
 grant execute on function public.get_alert_recipients_for_dispatch(uuid) to service_role;
 grant execute on function public.upsert_responder_contact(uuid, text, boolean) to service_role;
+grant execute on function public.register_invited_responder(uuid, uuid, text, text, text[], uuid) to service_role;
+grant execute on function public.upsert_push_subscription(uuid, text, text, text) to service_role;
+revoke all on function public.reserve_incident(uuid, uuid, uuid, text, text, text, numeric, numeric, integer, text) from public, anon, authenticated;
+grant execute on function public.reserve_incident(uuid, uuid, uuid, text, text, text, numeric, numeric, integer, text) to service_role;
 
 commit;
 

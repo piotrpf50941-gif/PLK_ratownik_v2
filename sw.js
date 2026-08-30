@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'ratownik-plk-v2-2.6.0';
+const CACHE_NAME = 'ratownik-plk-v2-2.6.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,7 +36,7 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
       .then(function (keys) {
-        return Promise.all(keys.filter(function (key) { return key !== CACHE_NAME; }).map(function (key) { return caches.delete(key); }));
+        return Promise.all(keys.filter(function (key) { return key.startsWith('ratownik-plk-v2-') && key !== CACHE_NAME; }).map(function (key) { return caches.delete(key); }));
       })
       .then(function () { return self.clients.claim(); })
   );
@@ -71,10 +71,12 @@ self.addEventListener('push', function (event) {
   } catch (error) {
     payload = {};
   }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) payload = {};
 
-  const title = cleanNotificationText(payload.title, 'Ratownik PLK — potrzebna pomoc', 90);
+  // Ekran blokady nie ujawnia danych pracownika, miejsca ani opisu zdarzenia.
+  const title = 'Ratownik PLK — potrzebna pomoc';
   const options = {
-    body: cleanNotificationText(payload.body, 'Otwórz panel, aby zobaczyć szczegóły alarmu.', 220),
+    body: 'Otwórz panel i zaloguj się, aby zobaczyć szczegóły alarmu.',
     icon: './assets/icons/icon-192.png',
     badge: './assets/icons/icon-192.png',
     tag: cleanNotificationText(payload.tag, 'ratownik-plk-alert', 120),
@@ -94,7 +96,7 @@ self.addEventListener('notificationclick', function (event) {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
       const existing = windows.find(function (client) {
-        return client.url === targetUrl || client.url.startsWith(targetUrl);
+        return client.url === targetUrl;
       });
       if (existing) return existing.focus();
       return self.clients.openWindow(targetUrl);
@@ -112,9 +114,12 @@ self.addEventListener('fetch', function (event) {
     if (!PUBLIC_NAVIGATION_PATHS.has(url.pathname)) return;
     event.respondWith(
       fetch(event.request)
-        .then(function (response) {
+        .then(async function (response) {
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return (await caches.match('./index.html')) || response;
+          }
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put('./index.html', copy); });
+          try { await (await caches.open(CACHE_NAME)).put('./index.html', copy); } catch (error) { /* Brak miejsca nie blokuje aplikacji. */ }
           return response;
         })
         .catch(function () { return caches.match('./index.html'); })
@@ -130,7 +135,7 @@ self.addEventListener('fetch', function (event) {
       return fetch(event.request).then(function (response) {
         if (!response || response.status !== 200 || response.type !== 'basic') return response;
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+        event.waitUntil(caches.open(CACHE_NAME).then(function (cache) { return cache.put(event.request, copy); }).catch(function () {}));
         return response;
       });
     })

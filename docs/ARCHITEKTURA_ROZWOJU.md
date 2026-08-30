@@ -1,6 +1,6 @@
 # Ratownik PLK v2 — architektura rozwoju
 
-Stan dokumentu: 29.08.2026, aplikacja 2.6.0. Kod pilota backendu i panelu wewnętrznego jest przygotowany na osobnej gałęzi; konkretny projekt Supabase i dostawcy wiadomości nie są jeszcze podłączeni.
+Stan dokumentu: 30.08.2026, aplikacja 2.6.1. Kod pilota backendu i panelu wewnętrznego jest przygotowany i objęty testami SQL/RLS, API i interfejsu; konkretny projekt Supabase i dostawcy wiadomości nie są jeszcze podłączeni. Szczegóły kontroli: [raport kontynuacji](KONTYNUACJA_2026-08-30.md).
 
 ## 1. Audyt obecnej aplikacji
 
@@ -54,7 +54,7 @@ Najprostszy do etapowego utrzymania wariant:
 7. **Dostawca PUSH oraz adapter SMS** — sekrety wyłącznie po stronie funkcji serwerowych; środowisko testowe zapisuje alarm demonstracyjny, ale niczego nie wysyła.
 8. **Dziennik audytowy** — kto, kiedy i w jakiej jednostce zmienił zasób, wykonał kontrolę lub uruchomił alarm.
 
-### Stan implementacji 2.6.0
+### Stan implementacji 2.6.1
 
 W repozytorium przygotowano katalog `internal/` z logowaniem Magic Link dla wcześniej zaproszonych kont, wyborem jednostki, rolami, dashboardem, listą ratowników i formularzem alarmu. Katalog `supabase/` zawiera schemat RLS oraz dwie Edge Functions: zapraszanie ratowników i alarmowanie.
 

@@ -12,6 +12,11 @@
   var locationSnapshot = null;
   var counters = { responders: 0, availableResponders: 0, incidents: 0, organizations: 0, attention: 0 };
   var refreshSequence = 0;
+  var viewSequence = 0;
+  var authEventSequence = 0;
+  var alertDraft = null;
+  var ownAvailability = false;
+  var signOutRequested = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -64,9 +69,45 @@
     var url = text(CONFIG.supabaseUrl).trim();
     var key = text(CONFIG.supabasePublishableKey).trim();
     var safeUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url);
-    var publishable = /^(sb_publishable_|eyJ)/.test(key);
+    var publishable = /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
     var forbidden = /(sb_secret_|service_role)/i.test(key);
     return Boolean(safeUrl && publishable && !forbidden);
+  }
+
+  async function actionErrorMessage(error) {
+    if (error && error.context && typeof error.context.json === 'function') {
+      try {
+        var response = error.context.clone ? error.context.clone() : error.context;
+        var payload = await response.json();
+        if (payload && typeof payload.message === 'string') return payload.message.slice(0, 500);
+      } catch (ignored) { /* Odpowiedź bramy nie zawsze jest JSON. */ }
+    }
+    return errorMessage(error);
+  }
+
+  function viewContext() {
+    return { sequence: viewSequence, userId: currentUser && currentUser.id, organizationId: currentOrganizationId };
+  }
+
+  function isCurrentView(context) {
+    return Boolean(currentUser && context && context.sequence === viewSequence &&
+      context.userId === currentUser.id && context.organizationId === currentOrganizationId);
+  }
+
+  function rememberedOrganization(value) {
+    try {
+      if (value === null) window.sessionStorage.removeItem('ratownik_internal_org');
+      else if (value !== undefined) window.sessionStorage.setItem('ratownik_internal_org', value);
+      else return window.sessionStorage.getItem('ratownik_internal_org');
+    } catch (ignored) { /* Zablokowany storage nie może blokować panelu. */ }
+    return '';
+  }
+
+  function clearLists() {
+    ['responderList', 'organizationList', 'incidentList'].forEach(function (id) { $(id).replaceChildren(); });
+    ['responderMetric', 'incidentMetric', 'organizationMetric', 'attentionMetric', 'lastRefresh'].forEach(function (id) { $(id).textContent = '—'; });
+    $('responderCountBadge').textContent = 'BRAK AKTUALNYCH DANYCH';
+    counters = { responders: 0, availableResponders: 0, incidents: 0, organizations: 0, attention: 0 };
   }
 
   function updateConnectionBadge() {
@@ -75,8 +116,12 @@
     if (!navigator.onLine) {
       badge.textContent = 'OFFLINE';
       badge.className = 'badge offline';
+      setHidden('offlineNotice', false);
+      $('openAlertButton').disabled = true;
       return;
     }
+    setHidden('offlineNotice', true);
+    $('openAlertButton').disabled = !currentUser || !currentOrganizationId;
     badge.textContent = client ? 'ONLINE' : 'NIESKONFIGUROWANY';
     badge.className = client ? 'badge online' : 'badge muted';
   }
@@ -168,9 +213,11 @@
     var membership = responderMembershipForCurrentOrganization();
     var button = $('enablePushButton');
     var status = $('pushStatus');
+    $('availabilityButton').hidden = !membership;
     button.hidden = !membership;
     if (!membership) {
       status.textContent = 'dostępne dla ratownika';
+      $('availabilityStatus').textContent = 'dotyczy ratowników';
       return;
     }
     if (!text(CONFIG.vapidPublicKey).trim()) {
@@ -184,8 +231,9 @@
       return;
     }
     button.disabled = false;
+    button.textContent = 'WŁĄCZ PUSH';
     status.textContent = Notification.permission === 'granted'
-      ? 'włączone w przeglądarce'
+      ? 'zgoda udzielona — zarejestruj telefon'
       : Notification.permission === 'denied'
         ? 'zablokowane w ustawieniach'
         : 'niewłączone';
@@ -201,6 +249,8 @@
   }
 
   function clearProtectedInterface() {
+    refreshSequence += 1;
+    viewSequence += 1;
     currentSession = null;
     currentUser = null;
     profile = null;
@@ -208,17 +258,27 @@
     organizations = [];
     currentOrganizationId = '';
     locationSnapshot = null;
-    $('responderList').replaceChildren();
-    $('organizationList').replaceChildren();
-    $('incidentList').replaceChildren();
+    alertDraft = null;
+    clearLists();
+    if ($('alertDialog').open) $('alertDialog').close();
+    ['inviteResponderForm', 'organizationForm', 'alertForm', 'loginForm'].forEach(function (id) { $(id).reset(); });
+    ['userDisplayName', 'userEmail', 'inviteStatus', 'organizationStatus', 'alertStatus', 'panelStatus'].forEach(function (id) { $(id).textContent = ''; });
+    $('toast').hidden = true;
     $('organizationSelect').replaceChildren();
+    rememberedOrganization(null);
+    setAlertFieldsDisabled(false);
     setHidden('internalApp', true);
     setHidden('accessDeniedSection', true);
+    updateConnectionBadge();
   }
 
   async function sendMagicLink(event) {
     event.preventDefault();
     var form = event.currentTarget;
+    if (!navigator.onLine || !client) {
+      setStatus('loginStatus', 'Logowanie wymaga połączenia z internetem.', 'error');
+      return;
+    }
     var email = text(new FormData(form).get('email')).trim().toLowerCase();
     if (!email) return;
     $('loginButton').disabled = true;
@@ -244,12 +304,30 @@
 
   async function signOut() {
     if (!client) return;
+    signOutRequested = true;
+    authEventSequence += 1;
+    clearProtectedInterface();
+    setHidden('loginSection', false);
+    setHidden('retrySignOutButton', true);
     try {
-      await client.auth.signOut({ scope: 'local' });
+      var result = await withTimeout(client.auth.signOut({ scope: 'local' }), 12000, 'Nie można potwierdzić wylogowania.');
+      if (result.error) throw result.error;
+      if ('serviceWorker' in navigator) {
+        var registration = await navigator.serviceWorker.getRegistration(new URL('../', window.location.href).href);
+        if (registration && registration.pushManager) {
+          var subscription = await registration.pushManager.getSubscription();
+          if (subscription) await withTimeout(subscription.unsubscribe(), 8000, 'Nie można potwierdzić wyłączenia PUSH.');
+        }
+        if (registration && registration.getNotifications) {
+          (await registration.getNotifications()).forEach(function (notification) { notification.close(); });
+        }
+      }
+      showToast('Wylogowano. Dane panelu zostały usunięte z widoku.');
+    } catch (error) {
+      setStatus('loginStatus', 'Widok wyczyszczony. Nie udało się potwierdzić wylogowania lub wyłączenia PUSH. Sprawdź połączenie i wyloguj ponownie.', 'error');
+      setHidden('retrySignOutButton', false);
     } finally {
-      clearProtectedInterface();
-      setHidden('loginSection', false);
-      showToast('Wylogowano i usunięto dane panelu z bieżącego widoku.');
+      $('loginButton').disabled = false;
     }
   }
 
@@ -269,14 +347,17 @@
   }
 
   async function loadAccessContext(session) {
+    viewSequence += 1;
     var sequence = ++refreshSequence;
     currentSession = session;
     currentUser = session.user;
     setHidden('loginSection', true);
     setHidden('configurationNotice', true);
+    setHidden('internalApp', true);
+    clearLists();
     try {
       var responses = await Promise.all([
-        client.from('profiles').select('user_id,display_name').eq('user_id', currentUser.id).maybeSingle(),
+        client.from('profiles').select('user_id,display_name,active').eq('user_id', currentUser.id).eq('active', true).maybeSingle(),
         client.from('memberships').select('id,user_id,organization_id,role,active,organizations(id,name,code,kind,active)').eq('user_id', currentUser.id).eq('active', true),
         client.from('organizations').select('id,parent_id,name,code,kind,active').eq('active', true).order('name')
       ]);
@@ -288,7 +369,7 @@
       memberships = responses[1].data || [];
       organizations = responses[2].data || [];
 
-      if (!memberships.length || !organizations.length) {
+      if (!profile || !memberships.length || !organizations.length) {
         setHidden('internalApp', true);
         setHidden('accessDeniedSection', false);
         return;
@@ -297,7 +378,7 @@
       var membershipOrganizationIds = memberships.map(function (membership) {
         return membership.organization_id;
       });
-      var remembered = window.sessionStorage.getItem('ratownik_internal_org');
+      var remembered = rememberedOrganization();
       currentOrganizationId = organizations.some(function (organization) {
         return organization.id === remembered;
       }) ? remembered : membershipOrganizationIds[0];
@@ -314,8 +395,10 @@
       updateRoleInterface();
       setHidden('accessDeniedSection', true);
       setHidden('internalApp', false);
+      updateConnectionBadge();
       await refreshAll();
     } catch (error) {
+      if (sequence !== refreshSequence) return;
       clearProtectedInterface();
       setHidden('loginSection', false);
       setStatus('loginStatus', 'Nie udało się pobrać uprawnień: ' + errorMessage(error), 'error');
@@ -326,6 +409,11 @@
     if (!session || !session.user) {
       clearProtectedInterface();
       setHidden('loginSection', false);
+      return;
+    }
+    if (signOutRequested) return;
+    if (currentUser && currentUser.id === session.user.id && memberships.length) {
+      currentSession = session;
       return;
     }
     await loadAccessContext(session);
@@ -348,16 +436,24 @@
       '</article>';
   }
 
-  async function loadResponders() {
+  async function loadResponders(context) {
+    context = context || viewContext();
     var result = await client
       .from('memberships')
-      .select('id,user_id,organization_id,role,active,profiles(display_name),responder_profiles(available,competencies)')
-      .eq('organization_id', currentOrganizationId)
+      .select('id,user_id,organization_id,role,active,profiles!inner(display_name,active),responder_profiles(available,competencies)')
+      .eq('organization_id', context.organizationId)
       .eq('role', 'responder')
       .eq('active', true)
+      .eq('profiles.active', true)
       .order('created_at', { ascending: true });
+    if (!isCurrentView(context)) return;
     if (result.error) throw result.error;
     var rows = result.data || [];
+    var own = rows.find(function (row) { return row.user_id === context.userId; });
+    var ownResponder = own && one(own.responder_profiles);
+    ownAvailability = Boolean(ownResponder && ownResponder.available);
+    $('availabilityButton').textContent = ownAvailability ? 'JESTEM DOSTĘPNY — ZMIEŃ' : 'ZGŁOŚ GOTOWOŚĆ';
+    $('availabilityStatus').textContent = ownAvailability ? 'otrzymujesz alarmy w tej jednostce' : 'gotowość niepotwierdzona';
     counters.responders = rows.length;
     counters.availableResponders = rows.filter(function (membership) {
       var responder = one(membership.responder_profiles);
@@ -369,16 +465,20 @@
       : '<div class="empty">W tej jednostce nie ma jeszcze aktywnych ratowników.</div>';
   }
 
-  async function loadOrganizations() {
+  async function loadOrganizations(context) {
+    context = context || viewContext();
     var result = await client
       .from('organizations')
       .select('id,parent_id,name,code,kind,active')
       .eq('active', true)
       .order('name');
+    if (!isCurrentView(context)) return;
     if (result.error) throw result.error;
     organizations = result.data || [];
     counters.organizations = organizations.length;
     renderOrganizationSelector();
+    context.organizationId = currentOrganizationId;
+    updateRoleInterface();
     $('organizationList').innerHTML = organizations.length
       ? organizations.map(function (organization) {
           return '<article class="list-item"><div><h3>' +
@@ -390,16 +490,18 @@
       : '<div class="empty">Brak jednostek w dostępnym zakresie.</div>';
   }
 
-  async function loadIncidents() {
+  async function loadIncidents(context) {
+    context = context || viewContext();
     var since = new Date();
     since.setDate(since.getDate() - 30);
     var result = await client
       .from('incidents')
-      .select('id,incident_type,place_description,status,notification_mode,created_at,created_by')
-      .eq('organization_id', currentOrganizationId)
+      .select('id,incident_type,place_description,status,notification_mode,created_at,created_by,latitude,longitude')
+      .eq('organization_id', context.organizationId)
       .gte('created_at', since.toISOString())
       .order('created_at', { ascending: false })
       .limit(50);
+    if (!isCurrentView(context)) return;
     if (result.error) throw result.error;
     var rows = result.data || [];
     counters.incidents = rows.length;
@@ -412,7 +514,7 @@
           return '<article class="list-item"><div><h3>' + escapeHtml(incidentLabel(incident.incident_type)) +
             '</h3><p>' + escapeHtml(incident.place_description) + '</p><div class="meta">' +
             '<span class="badge">' + escapeHtml(mode) + '</span><span class="badge">' +
-            escapeHtml(incident.status || 'utworzony') + '</span></div></div><small>' +
+            escapeHtml(incident.status || 'utworzony') + '</span></div>' + incidentLocationLink(incident) + '</div><small>' +
             escapeHtml(formatDate(incident.created_at)) + '</small></article>';
         }).join('')
       : '<div class="empty">Brak alarmów z ostatnich 30 dni.</div>';
@@ -430,16 +532,61 @@
       : 'symulacja — bez wysyłki';
   }
 
+  function incidentLocationLink(incident) {
+    if (incident.latitude === null || incident.longitude === null) return '';
+    var latitude = Number(incident.latitude);
+    var longitude = Number(incident.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return '';
+    return '<a class="button secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps?q=' + latitude + ',' + longitude + '">OTWÓRZ LOKALIZACJĘ</a>';
+  }
+
+  async function changeAvailability() {
+    var membership = responderMembershipForCurrentOrganization();
+    if (!membership || !navigator.onLine) return;
+    var context = viewContext();
+    $('availabilityButton').disabled = true;
+    try {
+      var result = await client.from('responder_profiles').update({
+        available: !ownAvailability,
+        last_confirmed_at: new Date().toISOString()
+      }).eq('membership_id', membership.id).select('membership_id').single();
+      if (result.error) throw result.error;
+      if (isCurrentView(context)) await refreshAll();
+    } catch (error) {
+      if (isCurrentView(context)) showToast('Nie udało się zmienić gotowości: ' + errorMessage(error));
+    } finally {
+      $('availabilityButton').disabled = false;
+    }
+  }
+
   async function refreshAll() {
     if (!client || !currentOrganizationId) return;
+    viewSequence += 1;
+    var context = viewContext();
+    clearLists();
     $('refreshButton').disabled = true;
+    setStatus('panelStatus', 'Odświeżam dane jednostki…');
     try {
-      await Promise.all([loadResponders(), loadOrganizations(), loadIncidents()]);
+      await loadOrganizations(context);
+      if (!isCurrentView(context)) return;
+      if (!currentOrganizationId) {
+        clearProtectedInterface();
+        setHidden('accessDeniedSection', false);
+        return;
+      }
+      await Promise.all([loadResponders(context), loadIncidents(context)]);
+      if (!isCurrentView(context)) return;
       renderMetrics();
+      setStatus('panelStatus', '');
     } catch (error) {
-      showToast('Nie udało się odświeżyć panelu: ' + errorMessage(error));
-    } finally {
+      if (!isCurrentView(context)) return;
+      viewSequence += 1;
+      clearLists();
       $('refreshButton').disabled = false;
+      setStatus('panelStatus', 'Nie udało się pobrać aktualnych danych: ' + errorMessage(error) + '. Użyj Odśwież po odzyskaniu połączenia.', 'error');
+    } finally {
+      if (context.sequence === viewSequence) $('refreshButton').disabled = false;
+      updateConnectionBadge();
     }
   }
 
@@ -460,6 +607,7 @@
   async function inviteResponder(event) {
     event.preventDefault();
     if (!canManageCurrentOrganization()) return;
+    var context = viewContext();
     var form = event.currentTarget;
     var data = new FormData(form);
     var competencies = text(data.get('competencies')).split(',').map(function (item) {
@@ -471,20 +619,21 @@
       var result = await client.functions.invoke('manage-responder', {
         body: {
           action: 'invite',
-          organizationId: currentOrganizationId,
+          organizationId: context.organizationId,
           displayName: text(data.get('displayName')).trim(),
           email: text(data.get('email')).trim().toLowerCase(),
           phoneE164: text(data.get('phone')).trim() || null,
           competencies: competencies
         }
       });
+      if (!isCurrentView(context)) return;
       if (result.error) throw result.error;
-      setStatus('inviteStatus', 'Zaproszenie utworzone. Konto otrzyma rolę ratownika po przyjęciu zaproszenia.', 'success');
+      setStatus('inviteStatus', 'Zaproszenie utworzone i rola ratownika przypisana. Osoba musi potwierdzić e-mail, aby się zalogować.', 'success');
       form.reset();
-      await loadResponders();
-      renderMetrics();
+      await refreshAll();
     } catch (error) {
-      setStatus('inviteStatus', 'Nie udało się dodać ratownika: ' + errorMessage(error), 'error');
+      var message = await actionErrorMessage(error);
+      if (isCurrentView(context)) setStatus('inviteStatus', 'Nie udało się dodać ratownika: ' + message, 'error');
     } finally {
       form.querySelector('button[type="submit"]').disabled = false;
     }
@@ -493,42 +642,54 @@
   async function createOrganization(event) {
     event.preventDefault();
     if (!canManageCurrentOrganization()) return;
+    var context = viewContext();
     var form = event.currentTarget;
     var data = new FormData(form);
     setStatus('organizationStatus', 'Zapisuję jednostkę…');
     form.querySelector('button[type="submit"]').disabled = true;
     try {
       var result = await client.from('organizations').insert({
-        parent_id: currentOrganizationId,
+        parent_id: context.organizationId,
+        created_by: context.userId,
         name: text(data.get('name')).trim(),
         code: text(data.get('code')).trim().toUpperCase(),
         kind: text(data.get('kind')),
         active: true
       }).select('id').single();
+      if (!isCurrentView(context)) return;
       if (result.error) throw result.error;
       setStatus('organizationStatus', 'Jednostka została dodana.', 'success');
       form.reset();
-      await loadOrganizations();
-      renderMetrics();
+      await refreshAll();
     } catch (error) {
-      setStatus('organizationStatus', 'Nie udało się dodać jednostki: ' + errorMessage(error), 'error');
+      if (isCurrentView(context)) setStatus('organizationStatus', 'Nie udało się dodać jednostki: ' + errorMessage(error), 'error');
     } finally {
       form.querySelector('button[type="submit"]').disabled = false;
     }
   }
 
   function openAlertDialog() {
+    if (!currentUser || !currentOrganizationId) return;
+    if (alertDraft && alertDraft.submitting) {
+      showToast('Poprzedni alarm jest jeszcze przetwarzany. Sprawdź jego wynik w historii.');
+      return;
+    }
     if (!navigator.onLine) {
       showToast('Alarmowanie wymaga połączenia z internetem. Zadzwoń pod 112 i użyj obowiązującej ścieżki służbowej.');
       return;
     }
     $('alertForm').reset();
+    setAlertFieldsDisabled(false);
+    alertDraft = { context: viewContext(), key: idempotencyKey(), payload: null, submitting: false, completed: false };
     locationSnapshot = null;
     $('locationStatus').textContent = 'Lokalizacja niepobrana';
     setStatus('alertStatus', '');
     $('sendAlertButton').disabled = true;
+    $('sendAlertButton').textContent = 'URUCHOM ALARM';
+    var organization = organizations.find(function (item) { return item.id === currentOrganizationId; });
+    $('alertOrganizationName').textContent = organization ? organization.name : 'Wybrana jednostka';
     $('alertModeNotice').textContent = CONFIG.notificationMode === 'production'
-      ? 'Tryb produkcyjny: po potwierdzeniu funkcja serwerowa może wysłać PUSH i awaryjny SMS.'
+      ? 'Tryb produkcyjny: po potwierdzeniu funkcja serwerowa może wysłać PUSH i dodatkowy SMS.'
       : 'Tryb testowy: alarm zostanie zapisany, ale PUSH ani SMS nie zostaną wysłane.';
     $('alertDialog').showModal();
   }
@@ -538,6 +699,8 @@
   }
 
   function getLocation() {
+    var draft = alertDraft;
+    if (!draft || draft.payload) return;
     if (!navigator.geolocation) {
       $('locationStatus').textContent = 'GPS niedostępny — wpisz miejsce ręcznie';
       return;
@@ -545,6 +708,7 @@
     $('getLocationButton').disabled = true;
     $('locationStatus').textContent = 'Pobieram lokalizację…';
     navigator.geolocation.getCurrentPosition(function (position) {
+      if (alertDraft !== draft || !isCurrentView(draft.context)) return;
       locationSnapshot = {
         latitude: Number(position.coords.latitude.toFixed(6)),
         longitude: Number(position.coords.longitude.toFixed(6)),
@@ -553,6 +717,7 @@
       $('locationStatus').textContent = 'GPS zapisany · dokładność około ' + locationSnapshot.accuracyMeters + ' m';
       $('getLocationButton').disabled = false;
     }, function () {
+      if (alertDraft !== draft || !isCurrentView(draft.context)) return;
       locationSnapshot = null;
       $('locationStatus').textContent = 'Nie udało się pobrać GPS — wpisz miejsce ręcznie';
       $('getLocationButton').disabled = false;
@@ -582,6 +747,7 @@
     }
 
     var button = $('enablePushButton');
+    var context = viewContext();
     button.disabled = true;
     $('pushStatus').textContent = 'konfiguruję…';
     try {
@@ -594,6 +760,9 @@
       var registration = await navigator.serviceWorker.getRegistration(scopeUrl);
       if (!registration) {
         registration = await navigator.serviceWorker.register('../sw.js', { scope: '../' });
+      }
+      if (!registration.active) {
+        registration = await withTimeout(navigator.serviceWorker.ready, 10000, 'Uruchomienie obsługi PUSH trwa zbyt długo. Spróbuj ponownie.');
       }
 
       var subscription = await registration.pushManager.getSubscription();
@@ -610,15 +779,24 @@
           subscription: subscription.toJSON()
         }
       });
+      if (!isCurrentView(context)) {
+        await subscription.unsubscribe();
+        return;
+      }
       if (result.error) throw result.error;
       $('pushStatus').textContent = 'włączone i zapisane';
       button.textContent = 'PUSH WŁĄCZONE';
       showToast('Ten telefon będzie mógł otrzymywać alarmy PUSH dla wybranej jednostki.');
     } catch (error) {
+      var message = await actionErrorMessage(error);
+      if (!isCurrentView(context)) {
+        if (subscription) await subscription.unsubscribe().catch(function () {});
+        return;
+      }
       $('pushStatus').textContent = Notification.permission === 'denied'
         ? 'zablokowane w ustawieniach'
         : 'nie udało się włączyć';
-      showToast('PUSH nie został włączony: ' + errorMessage(error));
+      showToast('PUSH nie został włączony: ' + message);
       button.disabled = false;
     }
   }
@@ -627,37 +805,79 @@
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
       return window.crypto.randomUUID();
     }
-    return 'web-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    if (!window.crypto || !window.crypto.getRandomValues) return null;
+    var bytes = window.crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    var hex = Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+  }
+
+  function setAlertFieldsDisabled(disabled) {
+    $('alertForm').querySelectorAll('input,select,textarea').forEach(function (field) { field.disabled = disabled; });
+    $('getLocationButton').disabled = disabled;
+  }
+
+  function alertOutcome(response) {
+    var count = Number.isInteger(response.recipientCount) ? ' Odbiorcy: ' + response.recipientCount + '.' : '';
+    if (response.mode === 'simulation' && response.status === 'simulated') {
+      return { message: 'Symulacja zapisana. Nie wysłano PUSH ani SMS.' + count, type: 'success' };
+    }
+    if (response.mode === 'production' && response.status === 'sent') {
+      return { message: 'Bramy przyjęły powiadomienia.' + count + ' To nie potwierdza dotarcia ani reakcji ratownika.', type: 'success' };
+    }
+    if (response.status === 'partial') return { message: 'Nie wszystkie kanały mają potwierdzony wynik. Sprawdź historię; użyj 112 i ścieżki służbowej.', type: 'error' };
+    if (response.status === 'failed') return { message: 'Alarm nie został skutecznie wysłany. Użyj 112 i ścieżki służbowej.', type: 'error' };
+    return { message: 'Wynik alarmu nie jest jeszcze potwierdzony. Sprawdź historię; nie zakładaj, że pomoc została wezwana.', type: 'error' };
   }
 
   async function dispatchAlert(event) {
     event.preventDefault();
+    var draft = alertDraft;
+    if (!draft || draft.submitting || draft.completed || !isCurrentView(draft.context)) return;
     if (!$('alertConfirm').checked || !currentOrganizationId) return;
+    if (!navigator.onLine || !draft.key) {
+      setStatus('alertStatus', 'Brak połączenia lub bezpiecznej obsługi alarmu. Użyj 112 i ścieżki służbowej.', 'error');
+      return;
+    }
     var form = event.currentTarget;
-    var data = new FormData(form);
+    if (!draft.payload) {
+      var data = new FormData(form);
+      draft.payload = {
+        idempotencyKey: draft.key,
+        organizationId: draft.context.organizationId,
+        expectedMode: CONFIG.notificationMode === 'production' ? 'production' : 'simulation',
+        incidentType: text(data.get('incidentType')),
+        placeDescription: text(data.get('place')).trim(),
+        note: text(data.get('note')).trim() || null,
+        location: locationSnapshot
+      };
+    }
+    draft.submitting = true;
+    setAlertFieldsDisabled(true);
     $('sendAlertButton').disabled = true;
     setStatus('alertStatus', 'Weryfikuję uprawnienia i uruchamiam alarm…');
     try {
       var result = await client.functions.invoke('dispatch-responder-alert', {
-        body: {
-          idempotencyKey: idempotencyKey(),
-          organizationId: currentOrganizationId,
-          incidentType: text(data.get('incidentType')),
-          placeDescription: text(data.get('place')).trim(),
-          note: text(data.get('note')).trim() || null,
-          location: locationSnapshot
-        }
+        body: draft.payload
       });
+      if (alertDraft !== draft || !isCurrentView(draft.context)) return;
       if (result.error) throw result.error;
       var response = result.data || {};
-      var modeText = response.mode === 'production' ? 'wysłany' : 'zapisany jako symulacja';
-      setStatus('alertStatus', 'Alarm ' + modeText + '. Odbiorcy: ' + (response.recipientCount || 0) + '.', 'success');
-      showToast('Alarm ' + modeText + '. Zdarzenie ma zapis audytowy.');
-      await loadIncidents();
-      renderMetrics();
+      var outcome = alertOutcome(response);
+      draft.completed = true;
+      setStatus('alertStatus', outcome.message, outcome.type);
+      showToast(outcome.message);
+      await loadIncidents(draft.context);
+      if (isCurrentView(draft.context)) renderMetrics();
     } catch (error) {
-      setStatus('alertStatus', 'Alarm nie został uruchomiony: ' + errorMessage(error) + '. W razie zagrożenia dzwoń 112.', 'error');
+      var message = await actionErrorMessage(error);
+      if (alertDraft !== draft || !isCurrentView(draft.context)) return;
+      setStatus('alertStatus', 'Nie można potwierdzić wyniku: ' + message + '. Ponowienie sprawdzi ten sam alarm. W razie zagrożenia dzwoń 112.', 'error');
+      $('sendAlertButton').textContent = 'SPRAWDŹ / PONÓW TEN ALARM';
       $('sendAlertButton').disabled = false;
+    } finally {
+      draft.submitting = false;
     }
   }
 
@@ -665,11 +885,14 @@
     $('loginForm').addEventListener('submit', sendMagicLink);
     $('signOutButton').addEventListener('click', signOut);
     $('deniedSignOutButton').addEventListener('click', signOut);
+    $('retrySignOutButton').addEventListener('click', signOut);
     $('refreshButton').addEventListener('click', refreshAll);
     $('enablePushButton').addEventListener('click', enablePushNotifications);
+    $('availabilityButton').addEventListener('click', changeAvailability);
+    $('retryConnectionButton').addEventListener('click', function () { window.location.reload(); });
     $('organizationSelect').addEventListener('change', function (event) {
       currentOrganizationId = event.target.value;
-      window.sessionStorage.setItem('ratownik_internal_org', currentOrganizationId);
+      rememberedOrganization(currentOrganizationId);
       updateRoleInterface();
       refreshAll();
     });
@@ -683,7 +906,7 @@
     $('closeAlertButton').addEventListener('click', closeAlertDialog);
     $('getLocationButton').addEventListener('click', getLocation);
     $('alertConfirm').addEventListener('change', function (event) {
-      $('sendAlertButton').disabled = !event.target.checked;
+      $('sendAlertButton').disabled = !event.target.checked || !alertDraft || alertDraft.submitting || alertDraft.completed;
     });
     $('alertForm').addEventListener('submit', dispatchAlert);
     $('alertDialog').addEventListener('cancel', function (event) {
@@ -694,12 +917,74 @@
     window.addEventListener('offline', updateConnectionBadge);
   }
 
+  function withTimeout(promise, milliseconds, message) {
+    var timer;
+    return Promise.race([promise, new Promise(function (resolve, reject) {
+      timer = window.setTimeout(function () { reject(new Error(message)); }, milliseconds);
+    })]).finally(function () { window.clearTimeout(timer); });
+  }
+
+  function loadAuthSdk() {
+    if (window.supabase && typeof window.supabase.createClient === 'function') return Promise.resolve();
+    return withTimeout(new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js';
+      script.integrity = 'sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV';
+      script.crossOrigin = 'anonymous';
+      script.onload = resolve;
+      script.onerror = function () { reject(new Error('Nie można pobrać modułu logowania. Sprawdź połączenie.')); };
+      document.head.appendChild(script);
+    }), 10000, 'Połączenie z modułem logowania trwa zbyt długo. Spróbuj ponownie.');
+  }
+
+  async function boundedFetch(url, options) {
+    var settings = Object.assign({}, options || {});
+    var controller = new AbortController();
+    var previousSignal = settings.signal;
+    function abort() { controller.abort(); }
+    if (previousSignal) {
+      if (previousSignal.aborted) abort();
+      else previousSignal.addEventListener('abort', abort, { once: true });
+    }
+    var timer = window.setTimeout(abort, 20000);
+    settings.signal = controller.signal;
+    settings.cache = 'no-store';
+    try { return await window.fetch(url, settings); }
+    finally {
+      window.clearTimeout(timer);
+      if (previousSignal) previousSignal.removeEventListener('abort', abort);
+    }
+  }
+
   async function boot() {
     bindEvents();
     updateConnectionBadge();
-    if (!isConfigured() || !window.supabase || typeof window.supabase.createClient !== 'function') {
+
+    // Zaproszenie administratora nie jest przepływem PKCE. Własny link e-mail
+    // przenosi jednorazowy token_hash, który weryfikujemy w Auth, nie w interfejsie.
+    var callbackUrl = new URL(window.location.href);
+    var tokenHash = callbackUrl.searchParams.get('token_hash');
+    var tokenType = callbackUrl.searchParams.get('type');
+    if (tokenHash) {
+      callbackUrl.searchParams.delete('token_hash');
+      callbackUrl.searchParams.delete('type');
+      window.history.replaceState(null, '', callbackUrl.pathname + callbackUrl.search + callbackUrl.hash);
+    }
+    if (!isConfigured()) {
       setHidden('configurationNotice', false);
       setHidden('loginSection', true);
+      return;
+    }
+
+    setHidden('loginSection', false);
+    $('loginButton').disabled = true;
+    setStatus('loginStatus', 'Łączę z modułem logowania…');
+    try {
+      if (!navigator.onLine) throw new Error('Logowanie wymaga internetu. Procedury i narzędzia są dostępne w aplikacji publicznej.');
+      await loadAuthSdk();
+    } catch (error) {
+      setStatus('loginStatus', errorMessage(error), 'error');
+      setHidden('retryConnectionButton', false);
       return;
     }
 
@@ -707,6 +992,7 @@
       text(CONFIG.supabaseUrl).trim(),
       text(CONFIG.supabasePublishableKey).trim(),
       {
+        global: { fetch: boundedFetch },
         auth: {
           persistSession: true,
           autoRefreshToken: true,
@@ -715,18 +1001,37 @@
         }
       }
     );
+    $('loginButton').disabled = false;
+    setStatus('loginStatus', '');
     updateConnectionBadge();
 
+    var callbackError = null;
+    if (tokenHash) {
+      try {
+        if (tokenType !== 'invite' && tokenType !== 'email') throw new Error('Nieobsługiwany link logowania.');
+        var verification = await client.auth.verifyOtp({ token_hash: tokenHash, type: tokenType });
+        if (verification.error) throw verification.error;
+      } catch (error) {
+        callbackError = error;
+      }
+    }
+
     client.auth.onAuthStateChange(function (event, session) {
+      var sequence = ++authEventSequence;
       if (event === 'SIGNED_OUT') {
         handleSession(null);
       } else if (session && (!currentSession || currentSession.access_token !== session.access_token)) {
-        window.setTimeout(function () { handleSession(session); }, 0);
+        window.setTimeout(function () {
+          if (sequence === authEventSequence) handleSession(session);
+        }, 0);
       }
     });
 
     try {
+      if (callbackError) throw callbackError;
+      var initialSequence = authEventSequence;
       var result = await client.auth.getSession();
+      if (initialSequence !== authEventSequence) return;
       if (result.error) throw result.error;
       await handleSession(result.data.session);
     } catch (error) {

@@ -252,7 +252,7 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
-assert.equal(context.window.RATOWNIK_DATA.version, '2.5.0');
+assert.equal(context.window.RATOWNIK_DATA.version, '2.6.1');
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.length, 7);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('rko-dorosly'), false);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('pozycja-boczna'), false);
