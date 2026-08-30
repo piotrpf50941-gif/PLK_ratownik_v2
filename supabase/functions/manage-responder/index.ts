@@ -6,6 +6,7 @@ import {
   json,
   readJson,
   requireUser,
+  requireOrganizationAccess,
   ResponseError,
   safeError,
   validUuid
@@ -24,48 +25,13 @@ function cleanCompetencies(value: unknown) {
   return value.slice(0, 12).map((item) => cleanText(item, 60, false)).filter(Boolean)
 }
 
-async function canManage(admin: ReturnType<typeof adminClient>, userId: string, organizationId: string) {
-  const { data: roles, error: roleError } = await admin
-    .from('memberships')
-    .select('organization_id,role,organizations!inner(active)')
-    .eq('user_id', userId)
-    .eq('active', true)
-    .eq('organizations.active', true)
-    .in('role', ['unit_admin', 'system_admin'])
-
-  if (roleError) throw roleError
-  if (!roles || roles.length === 0) return false
-  if (roles.some((membership) => membership.role === 'system_admin')) return true
-
-  const managedIds = new Set(
-    roles
-      .filter((membership) => membership.role === 'unit_admin')
-      .map((membership) => membership.organization_id)
-  )
-
-  let cursor: string | null = organizationId
-  for (let depth = 0; cursor && depth < 16; depth += 1) {
-    if (managedIds.has(cursor)) return true
-    const { data: organization, error } = await admin
-      .from('organizations')
-      .select('parent_id')
-      .eq('id', cursor)
-      .eq('active', true)
-      .maybeSingle()
-    if (error) throw error
-    cursor = organization ? organization.parent_id : null
-  }
-
-  return false
-}
-
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
   if (preflight) return preflight
 
   try {
     assertPost(req)
-    const { user } = await requireUser(req)
+    const { user, scoped } = await requireUser(req)
     const body = await readJson(req)
     const action = cleanText(body.action, 40, true)
 
@@ -89,10 +55,8 @@ Deno.serve(async (req: Request) => {
       throw new ResponseError(400, 'Telefon musi mieć format międzynarodowy, np. +48…')
     }
 
+    await requireOrganizationAccess(scoped, body.organizationId, true)
     const admin = adminClient()
-    if (!await canManage(admin, user.id, body.organizationId)) {
-      throw new ResponseError(403, 'Nie masz uprawnień do zarządzania ratownikami tej jednostki.')
-    }
 
     const { data: organization, error: organizationError } = await admin
       .from('organizations').select('id').eq('id', body.organizationId).eq('active', true).maybeSingle()

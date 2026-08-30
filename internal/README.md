@@ -5,7 +5,7 @@ Ten katalog zawiera uwierzytelnioną część aplikacji: jednostki, ratowników,
 ## Stan tego etapu
 
 - logowanie jednorazowym linkiem e-mail dla wcześniej zaproszonych kont;
-- profile, jednostki i role: pracownik, ratownik, administrator jednostki, administrator systemu;
+- profile, jednostki i role: pracownik, ratownik, koordynator jednostki, administrator (zachowane kody `unit_admin` i `system_admin`);
 - dashboard jednostki;
 - lista ratowników bez ujawniania numerów telefonów w przeglądarce;
 - zapraszanie ratownika przez chronioną Edge Function;
@@ -16,11 +16,17 @@ Ten katalog zawiera uwierzytelnioną część aplikacji: jednostki, ratowników,
 - adaptery PUSH/SMS uruchamiane wyłącznie po stronie funkcji serwerowej;
 - brak danych osobowych i sekretów w repozytorium.
 
+ETAP A dodaje walidowaną hierarchię `company → zlk → section → workplace`, katalog ról, widoki sekcji i wielu przypisań, model podstawowego/aktualnego miejsca pracy oraz audyt zmian jednostek i przypisań. Uprawnienia są sprawdzane dla całej aktywnej ścieżki. Panel odświeża role po zmianie sesji; pracownik nie otrzymuje cudzej historii alarmów ani pełnego spisu profili współpracowników.
+
+Model miejsca pracy jest gotowy po stronie bazy; formularz profilu i pełny cykl życia kont pozostają do ETAPU B. Szczegóły: [raport ETAPU A](../docs/ETAP_A_JEDNOSTKI.md). Brak skonfigurowanego backendu nie jest zastępowany pozornym logowaniem lub danymi pracowników w plikach JSON.
+
 ## 1. Utwórz środowisko testowe Supabase
 
 Najpierw utwórz osobny projekt test. Projektu produkcyjnego nie podłączaj przed zatwierdzeniem klasyfikacji danych, hostingu, SSO oraz dostawców wiadomości.
 
 Blueprint SQL jest przeznaczony dla pustego projektu testowego. Nie uruchamiaj go jako zamiennika migracji istniejącej bazy z danymi. Nie wykonuj resetu bazy zdalnej. Polecenie `db reset` poniżej dotyczy wyłącznie lokalnego środowiska Docker uruchomionego przez Supabase CLI; usuwa jego dane testowe.
+
+Wymagany PostgreSQL 15+ (`security_invoker` dla widoków). Kontrola wstępna zatrzymuje blueprint przy niezgodnej starej hierarchii lub przypisaniu administratora systemu poza organizacją główną. Nie wyłączaj walidacji w celu wdrożenia: sprawdź dane i przygotuj migrację przyrostową. Nowe funkcje i panel wymagają SQL z RPC `organization_access`; wdrażaj najpierw bazę, potem funkcje, na końcu panel.
 
 W katalogu repozytorium:
 
@@ -114,6 +120,8 @@ Funkcje mają włączone verify_jwt. Ratownik rejestruje subskrypcję PUSH przyc
 
 Funkcje dodatkowo sprawdzają użytkownika, aktywność profilu, rolę i zakres jednostki. Tryb `notificationMode` panelu musi zgadzać się z `NOTIFICATION_MODE` serwera; niezgodność blokuje alarm, zanim nastąpi wysyłka.
 
+Wszystkie trzy funkcje korzystają z tego samego RPC zakresu co RLS. Nieaktywny zakład odcina również aktywne przypisania do jego sekcji. `organization_access` zwraca tylko dwa wskaźniki dla bieżącego użytkownika; nie jest uprzywilejowanym RPC do odczytu danych innych osób.
+
 ## 6. Test alarmu bez SMS
 
 1. Zaloguj się testowym ratownikiem, zgłoś gotowość i skonfiguruj testowy kanał kontaktu. Nowo zaproszona osoba nie jest automatycznie uznawana za dostępną.
@@ -148,6 +156,8 @@ npm test
 ```
 
 Test SQL używa PostgreSQL w pamięci (PGlite), a testy interfejsu i Edge Functions korzystają wyłącznie z atrap Auth/API/PUSH/SMS. Wykonują rzeczywisty kod aplikacji. Nie zastępują testu integracji na osobnym projekcie Supabase ani kontroli na fizycznym telefonie.
+
+Po ETAPIE A zestaw obejmuje 108 kontroli SQL/RLS, 25 scenariuszy panelu oraz 26 scenariuszy funkcji serwerowych, oprócz regresji publicznej PWA, offline i mobilnego CSS. Żaden test nie wysyła rzeczywistych wiadomości.
 
 ## Ważna granica
 
