@@ -39,6 +39,8 @@ W poprzedniej wersji ekran startowy łączył alarmowanie, lokalizację, raport,
 
 Publiczna wersja nie zawiera danych pracowników ani numerów telefonów. Przygotowany moduł `internal/` pobiera dane dopiero po uwierzytelnieniu i sprawdzeniu RLS. Do czasu podłączenia osobnego projektu Supabase pokazuje bezpieczny ekran konfiguracji; żadna lista pracowników ani sekret nie trafia do GitHub Pages. Szczegóły zawiera [instrukcja panelu](internal/README.md) i [architektura rozwoju](docs/ARCHITEKTURA_ROZWOJU.md).
 
+ETAP A kolejnej rozbudowy: uzupełniono katalog ról, model podstawowej/aktualnej sekcji, walidację hierarchii, audyt i odcinanie uprawnień w nieaktywnych jednostkach. Ograniczono odczyt cudzych profili i alarmów. [Raport ETAPU A i zakres ETAPU B](docs/ETAP_A_JEDNOSTKI.md) opisuje wykonany kod, testy i pozostałe ograniczenia. Backend oraz rzeczywiste powiadomienia nadal nie są uruchomione.
+
 ## Uruchomienie lokalne
 
 Repozytorium nie wymaga kompilacji ani instalowania zależności:
@@ -68,10 +70,10 @@ Docelowy adres po publikacji:
 
 Na telefonie: otwórz adres w Chrome/Safari, odśwież aplikację i wybierz instalację / dodanie do ekranu głównego. Po pierwszym pełnym załadowaniu przetestuj procedury, „Prowadź mnie” i narzędzia w trybie samolotowym. Nie uruchamiaj rzeczywistego połączenia 112 podczas testu. Zakładka Zasoby → Ratownicy prowadzi do części wewnętrznej, która wymaga osobnej konfiguracji opisanej w `internal/README.md`.
 
-Raport ostatniej kontroli i dalsze kroki: [Kontynuacja 30.08.2026](docs/KONTYNUACJA_2026-08-30.md).
+Raport najnowszego etapu: [ETAP A — jednostki i uprawnienia](docs/ETAP_A_JEDNOSTKI.md). Wcześniejsza kontrola wersji 2.6.1: [Kontynuacja 30.08.2026](docs/KONTYNUACJA_2026-08-30.md).
 
 ## Ważne
 
-To prototyp pomocniczy, nie wyrób medyczny. Nie zastępuje szkolenia, oceny sytuacji, obowiązujących instrukcji kolejowych ani poleceń dyspozytora 112. Dane zakładowe w repozytorium są demonstracyjne i należy je zastąpić zweryfikowanymi danymi.
+To prototyp pomocniczy, nie wyrób medyczny. Nie zastępuje szkolenia, oceny sytuacji, obowiązujących instrukcji kolejowych ani poleceń dyspozytora 112. Dane zasobów w publicznej wersji są demonstracyjne. Rzeczywiste dane wewnętrzne należy wprowadzać wyłącznie do chronionego backendu po zatwierdzeniu zasad dostępu — nie do publicznych plików repozytorium.
 
 Procedury opracowano w oparciu o [Wytyczne ERC 2025](https://www.erc.edu/science-research/guidelines/guidelines-2025/guidelines-2025-english/). Przed wdrożeniem produkcyjnym wymagają przeglądu osoby odpowiedzialnej za BHP/KPP oraz zgodności z instrukcjami zakładowymi.

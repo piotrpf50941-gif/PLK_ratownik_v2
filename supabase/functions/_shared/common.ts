@@ -64,6 +64,18 @@ export async function requireUser(req: Request) {
   return { user: data.user, scoped }
 }
 
+// Ten sam predykat co RLS, z tożsamością z JWT. Wyłączony przodek jednostki
+// blokuje również wywołania Edge Functions wykonywane później przez service_role.
+export async function requireOrganizationAccess(scoped: ReturnType<typeof adminClient>, organizationId: string, manage = false) {
+  const { data, error } = await scoped.rpc('organization_access', {
+    target_organization_id: organizationId
+  })
+  if (error) throw error
+  if (!data || data.can_access !== true || (manage && data.can_manage !== true)) {
+    throw new ResponseError(403, 'Nie masz aktywnych uprawnień do tej jednostki lub jej jednostka nadrzędna jest nieaktywna.', 'organization_access_denied')
+  }
+}
+
 export class ResponseError extends Error {
   status: number
   code: string
