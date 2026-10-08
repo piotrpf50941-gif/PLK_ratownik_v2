@@ -110,13 +110,13 @@ const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
 elements.get('reportCasualties').value = '1';
 
-const screens = ['home', 'procedures', 'resources', 'tools'].map((name) => {
+const screens = ['home', 'firstaid', 'procedures', 'resources', 'tools'].map((name) => {
   const element = elements.get('screen-' + name);
   element.classList.add('screen');
   return element;
 });
 const dialogs = ['procedureDialog', 'emergencyDialog', 'reportDialog', 'dataDialog'].map((id) => elements.get(id));
-const navigation = ['home', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
+const navigation = ['home', 'firstaid', 'procedures', 'resources', 'tools'].map((name) => new FakeElement('', { dataset: { nav: name } }));
 const resourceTabs = ['aeds', 'kits', 'rescuers'].map((name) => new FakeElement('', { dataset: { resource: name } }));
 const entityTabs = ['aeds', 'kits'].map((name) => new FakeElement('', { dataset: { entity: name } }));
 elements.get('metronomeButton').parentToolCard = new FakeElement('metronome-card', { classes: ['tool-card'] });
@@ -252,7 +252,9 @@ fakeWindow.history = context.history;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(new URL('../data.js', import.meta.url), 'utf8'), context, { filename: 'data.js' });
 assert.equal(context.window.RATOWNIK_DATA.procedures.length, 10);
-assert.equal(context.window.RATOWNIK_DATA.version, '2.6.1');
+assert.equal(context.window.RATOWNIK_DATA.version, '2.7.0');
+assert.equal(context.window.RATOWNIK_DATA.firstAidModule.title, 'Pierwsza pomoc');
+assert.equal(context.window.RATOWNIK_DATA.firstAidModule.groups.length, 5);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.length, 7);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('rko-dorosly'), false);
 assert.equal(context.window.RATOWNIK_DATA.emergencyChoiceIds.includes('pozycja-boczna'), false);
@@ -305,7 +307,10 @@ assert.match(elements.get('resourceList').innerHTML, /NIEDOSTĘPNY/);
 assert.ok(Number(elements.get('readinessAlertCount').textContent) > 0);
 assert.match(elements.get('readinessAlertList').innerHTML, /AED — samochód patrolowy/);
 assert.equal(elements.get('screen-home').hidden, false);
+assert.equal(elements.get('screen-firstaid').hidden, true);
 assert.equal(elements.get('screen-procedures').hidden, true);
+assert.match(elements.get('firstAidContent').innerHTML, /Ocena stanu świadomości — ACVPU/);
+assert.match(elements.get('firstAidContent').innerHTML, /X → A → B → C → D → E/);
 
 elements.get('emergencyGuideButton').dispatch('click');
 assert.equal(elements.get('emergencyDialog').open, true);
@@ -376,6 +381,12 @@ elements.get('nextStepButton').dispatch('click');
 elements.get('nextStepButton').dispatch('click');
 elements.get('nextStepButton').dispatch('click');
 assert.match(elements.get('procedureContent').innerHTML, /data-procedure-tool="time-mark"/);
+
+const firstAidTarget = new FakeElement('', { dataset: { nav: 'firstaid' } });
+fakeDocument.dispatch('click', firstAidTarget);
+assert.equal(elements.get('screen-firstaid').hidden, false);
+assert.equal(elements.get('screen-home').hidden, true);
+assert.match(elements.get('firstAidContent').innerHTML, /Parametry życiowe/);
 
 const toolsTarget = new FakeElement('', { dataset: { nav: 'tools' } });
 fakeDocument.dispatch('click', toolsTarget);
