@@ -4,8 +4,8 @@
   const sourceUrl = 'https://www.erc.edu/science-research/guidelines/guidelines-2025/guidelines-2025-english/';
 
   window.RATOWNIK_DATA = {
-    version: '2.6.1',
-    reviewedAt: '2026-08-29',
+    version: '2.7.0',
+    reviewedAt: '2026-10-08',
     quickProcedureIds: ['rko-dorosly', 'krwotok', 'porazenie-pradem', 'wypadek-kolejowy'],
     emergencyChoiceIds: [
       'krwotok',
@@ -244,6 +244,968 @@
         ]
       }
     ],
+    firstAidModule: {
+      "title": "Pierwsza pomoc",
+      "groups": [
+        {
+          "title": "GRUPA I · Bezpieczeństwo",
+          "topics": [
+            {
+              "title": "Bezpieczeństwo własne i miejsca zdarzenia",
+              "path": "firstaid/bezpieczenstwo"
+            }
+          ]
+        },
+        {
+          "title": "GRUPA II · Wstępna ocena poszkodowanego",
+          "subgroups": [
+            {
+              "title": "PODGRUPA 1 · Ocena ogólna",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Podejdź do poszkodowanego dopiero po upewnieniu się, że miejsce zdarzenia jest bezpieczne."
+                },
+                {
+                  "type": "p",
+                  "text": "W pierwszych sekundach oceń przede wszystkim:"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "czy poszkodowany reaguje",
+                    "orientacyjny wiek / grupę wiekową",
+                    "pozycję poszkodowanego",
+                    "wygląd ogólny i zachowanie",
+                    "aktywność ruchową",
+                    "kolor i wilgotność skóry",
+                    "widoczne objawy urazu lub nagłego zachorowania",
+                    "mechanizm zdarzenia, jeżeli jest znany",
+                    "obecność masywnego krwotoku"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Szczególną uwagę zwróć na krwotok zagrażający życiu. Sprawdź nie tylko bezpośrednio widoczną ranę, ale również ubranie, podłoże oraz miejsca, w których krew może być częściowo ukryta."
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli występuje masywny krwotok, rozpocznij jego tamowanie natychmiast. Zastosuj silny bezpośredni ucisk, odpowiedni opatrunek, a przy zagrażającym życiu krwotoku z kończyny — jeżeli jest to konieczne — opaskę uciskową zgodnie z zasadami pierwszej pomocy."
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli poszkodowany nie reaguje, głośno wołaj o pomoc i zleć konkretnej osobie wezwanie 112 lub 999 oraz przyniesienie AED. Jeżeli jesteś sam, wykonaj połączenie w trybie głośnomówiącym i kontynuuj ocenę poszkodowanego."
+                },
+                {
+                  "type": "subheading",
+                  "text": "Dalszą ocenę prowadź według schematu X → A → B → C → D → E"
+                },
+                {
+                  "type": "scheme",
+                  "items": [
+                    {
+                      "label": "X",
+                      "title": "eXsanguination",
+                      "text": "masywny krwotok"
+                    },
+                    {
+                      "label": "A",
+                      "title": "Airway",
+                      "text": "drogi oddechowe"
+                    },
+                    {
+                      "label": "B",
+                      "title": "Breathing",
+                      "text": "oddychanie"
+                    },
+                    {
+                      "label": "C",
+                      "title": "Circulation",
+                      "text": "krążenie"
+                    },
+                    {
+                      "label": "D",
+                      "title": "Disability",
+                      "text": "świadomość i neurologia"
+                    },
+                    {
+                      "label": "E",
+                      "title": "Exposure",
+                      "text": "ekspozycja i dalsza ocena urazowa"
+                    }
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "danger",
+                  "text": "Zasada: krwotok bezpośrednio zagrażający życiu należy opanować przed przejściem do dalszej oceny ABCDE."
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 2 · Ocena stanu świadomości — ACVPU",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "W ramach szkolenia pracowników stosuj skalę ACVPU jako prosty, uporządkowany sposób opisania stanu świadomości poszkodowanego."
+                },
+                {
+                  "type": "p",
+                  "text": "Skala pomaga przekazać informację innemu ratownikowi, dyspozytorowi medycznemu lub zespołowi ratownictwa medycznego oraz zauważyć pogarszanie się stanu poszkodowanego."
+                },
+                {
+                  "type": "scheme",
+                  "items": [
+                    {
+                      "label": "A",
+                      "title": "Alert",
+                      "text": "Poszkodowany jest przytomny, samodzielnie otwiera oczy, nawiązuje logiczny kontakt i prawidłowo reaguje na otoczenie."
+                    },
+                    {
+                      "label": "C",
+                      "title": "Confusion",
+                      "text": "Poszkodowany jest przytomny, ale jest zdezorientowany, nie wie, gdzie się znajduje, nie pamięta zdarzenia, odpowiada nielogicznie, jest splątany lub zachowuje się inaczej niż zwykle."
+                    },
+                    {
+                      "label": "V",
+                      "title": "Voice",
+                      "text": "Poszkodowany nie reaguje spontanicznie, ale reaguje na głos, np. otwiera oczy, odpowiada, wykonuje polecenie lub porusza się po zawołaniu."
+                    },
+                    {
+                      "label": "P",
+                      "title": "Pain",
+                      "text": "Poszkodowany nie reaguje na głos, ale reaguje dopiero na bezpieczny bodziec bólowy."
+                    },
+                    {
+                      "label": "U",
+                      "title": "Unresponsive",
+                      "text": "Poszkodowany nie wykazuje prawidłowej reakcji na głos ani inne bezpieczne próby nawiązania kontaktu."
+                    }
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "warning",
+                  "text": "Nowe lub narastające splątanie jest objawem alarmowym."
+                },
+                {
+                  "type": "p",
+                  "text": "Ocena kategorii P ma przede wszystkim charakter szkoleniowy. Nie należy stosować agresywnych bodźców bólowych ani wykonywać czynności mogących spowodować dodatkowy uraz."
+                },
+                {
+                  "type": "p",
+                  "text": "U dzieci, niemowląt oraz osób z podejrzeniem urazu nie należy rutynowo stosować bodźców bólowych."
+                },
+                {
+                  "type": "subheading",
+                  "text": "Jak oceniać?"
+                },
+                {
+                  "type": "numbered",
+                  "items": [
+                    "Podejdź od strony widocznej dla poszkodowanego.",
+                    "Przedstaw się.",
+                    "Zapytaj głośno: „Czy wszystko w porządku?”, „Czy mnie słyszysz?”.",
+                    "Poproś o wykonanie prostego polecenia.",
+                    "Jeżeli nie reaguje, delikatnie potrząśnij osobę dorosłą za ramiona i ponownie zawołaj.",
+                    "Określ poziom reakcji według ACVPU.",
+                    "Każde pogorszenie, np. A → C → V → U, traktuj jako sygnał alarmowy."
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "danger",
+                  "text": "WAŻNE: ocena ACVPU nie może opóźniać wezwania pomocy ani oceny oddechu. Jeżeli poszkodowany nie reaguje i nie oddycha prawidłowo, należy rozpocząć RKO."
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli osoba ma obniżony poziom świadomości, ale oddycha prawidłowo i nie spełnia kryteriów rozpoczęcia RKO, należy stale kontrolować jej stan."
+                },
+                {
+                  "type": "p",
+                  "text": "Pozycję bezpieczną można zastosować u osoby oddychającej prawidłowo z obniżonym poziomem świadomości, jeżeli nie występują okoliczności przemawiające przeciw jej przemieszczaniu."
+                },
+                {
+                  "type": "note",
+                  "tone": "warning",
+                  "text": "Nie stosuj rutynowo pozycji bezpiecznej przy urazie ani przy oddechu agonalnym."
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 3 · Dorosły — ocena poszkodowanego",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Postępuj według schematu XABCDE."
+                },
+                {
+                  "type": "subheading",
+                  "text": "X — masywny krwotok"
+                },
+                {
+                  "type": "p",
+                  "text": "Sprawdź, czy występuje krwotok bezpośrednio zagrażający życiu."
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "zastosuj silny bezpośredni ucisk",
+                    "zastosuj odpowiedni opatrunek",
+                    "przy masywnym krwotoku z kończyny rozważ opaskę uciskową zgodnie z procedurą"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Nie przechodź dalej, dopóki nie podjąłeś działania zmierzającego do opanowania masywnego krwotoku."
+                },
+                {
+                  "type": "subheading",
+                  "text": "A — drogi oddechowe"
+                },
+                {
+                  "type": "p",
+                  "text": "Oceń, czy drogi oddechowe są drożne."
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli osoba jest nieprzytomna, udrożnij drogi oddechowe metodą odchylenia głowy i uniesienia żuchwy."
+                },
+                {
+                  "type": "p",
+                  "text": "Przy podejrzeniu urazu szyi ogranicz niepotrzebne ruchy głowy i szyi. Osoba odpowiednio przeszkolona może zastosować wysunięcie żuchwy."
+                },
+                {
+                  "type": "note",
+                  "tone": "info",
+                  "text": "Zapewnienie drożności dróg oddechowych ma pierwszeństwo przed obawą o ruch kręgosłupa."
+                },
+                {
+                  "type": "subheading",
+                  "text": "B — oddychanie"
+                },
+                {
+                  "type": "p",
+                  "text": "Oceń oddech przez maksymalnie 10 sekund:"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "patrz na ruchy klatki piersiowej",
+                    "słuchaj oddechu",
+                    "wyczuwaj przepływ powietrza"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Pojedyncze westchnienia, gasping, nieregularne lub agonalne ruchy oddechowe nie są prawidłowym oddechem."
+                },
+                {
+                  "type": "metric",
+                  "label": "Oddech dorosłego",
+                  "value": "12–20/min",
+                  "extra": "około 2,0–3,3 oddechu w 10 sekund"
+                },
+                {
+                  "type": "p",
+                  "text": "W praktyce 10 sekund służy przede wszystkim do oceny, czy oddech jest prawidłowy, a nie do dokładnego wyliczenia częstości."
+                },
+                {
+                  "type": "note",
+                  "tone": "danger",
+                  "text": "Brak prawidłowego oddechu → przerwij dalszą ocenę XABCDE → rozpocznij RKO i zastosuj AED."
+                },
+                {
+                  "type": "subheading",
+                  "text": "C — krążenie"
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli poszkodowany oddycha prawidłowo:"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "oceń kolor skóry",
+                    "temperaturę skóry",
+                    "wilgotność skóry",
+                    "widoczne krwawienie",
+                    "objawy wstrząsu",
+                    "pogorszenie stanu świadomości"
+                  ]
+                },
+                {
+                  "type": "metric",
+                  "label": "Tętno dorosłego",
+                  "value": "60–100/min",
+                  "extra": "około 10–16,7 uderzenia w 10 sekund"
+                },
+                {
+                  "type": "p",
+                  "text": "Pomiar tętna może być wykorzystywany szkoleniowo i do monitorowania stanu poszkodowanego, jeśli osoba udzielająca pomocy potrafi go wykonać."
+                },
+                {
+                  "type": "note",
+                  "tone": "warning",
+                  "text": "Brak wyczuwalnego tętna nie powinien być dla osoby udzielającej podstawowej pierwszej pomocy jedynym kryterium rozpoczęcia RKO."
+                },
+                {
+                  "type": "subheading",
+                  "text": "D — świadomość i neurologia"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "ACVPU",
+                    "mowę",
+                    "symetrię twarzy",
+                    "ruch kończyn",
+                    "nagły niedowład",
+                    "drgawki",
+                    "nietypowe zachowanie",
+                    "narastające splątanie"
+                  ]
+                },
+                {
+                  "type": "subheading",
+                  "text": "E — ekspozycja i dalsza ocena"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "inne urazy",
+                    "rany",
+                    "deformacje",
+                    "oparzenia",
+                    "wysypka",
+                    "obrzęki",
+                    "inne nieprawidłowości"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Odsłaniaj tylko tyle ciała, ile jest konieczne do oceny."
+                },
+                {
+                  "type": "p",
+                  "text": "Chroń poszkodowanego przed wychłodzeniem i zapewnij mu możliwie dużo prywatności."
+                },
+                {
+                  "type": "subheading",
+                  "text": "Dalsze działania"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "stale obserwuj poszkodowanego",
+                    "regularnie powtarzaj XABCDE",
+                    "zwracaj uwagę na zmianę ACVPU",
+                    "kontroluj oddech",
+                    "chroń przed wychłodzeniem",
+                    "przygotuj informacje dla ZRM"
+                  ]
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 4 · Dziecko — ocena poszkodowanego",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Postępuj według schematu XABCDE, dostosowując działania do wieku i wielkości dziecka."
+                },
+                {
+                  "type": "subheading",
+                  "text": "X — masywny krwotok"
+                },
+                {
+                  "type": "p",
+                  "text": "Natychmiast rozpoznaj i rozpocznij tamowanie krwotoku zagrażającego życiu."
+                },
+                {
+                  "type": "subheading",
+                  "text": "A — drogi oddechowe"
+                },
+                {
+                  "type": "p",
+                  "text": "Oceń drożność dróg oddechowych. U małego dziecka nie odginaj głowy nadmiernie. Unosząc brodę, nie uciskaj tkanek miękkich pod żuchwą."
+                },
+                {
+                  "type": "subheading",
+                  "text": "B — oddychanie"
+                },
+                {
+                  "type": "p",
+                  "text": "Oceń oddech przez maksymalnie 10 sekund."
+                },
+                {
+                  "type": "numbered",
+                  "items": [
+                    "Jeżeli dziecko nie reaguje i nie oddycha prawidłowo, wykonaj 5 początkowych oddechów ratowniczych.",
+                    "Rozpocznij RKO.",
+                    "Użyj AED tak szybko, jak jest to możliwe."
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Dla osoby nieprzeszkolonej w PBLS po 5 oddechach stosuje się RKO 30:2. Osoba przeszkolona w pediatrycznym BLS może stosować 15:2."
+                },
+                {
+                  "type": "procedure",
+                  "label": "Przejdź do: RKO dziecka",
+                  "procedureId": "rko-dziecko"
+                },
+                {
+                  "type": "subheading",
+                  "text": "C — krążenie"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "kolor i temperaturę skóry",
+                    "stan ogólny",
+                    "oznaki prawidłowego krążenia",
+                    "czas nawrotu kapilarnego, jeśli potrafisz",
+                    "pogorszenie świadomości"
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "warning",
+                  "text": "Pomiar tętna może być elementem monitorowania u osoby odpowiednio przeszkolonej, ale nie należy opóźniać RKO w celu poszukiwania tętna."
+                },
+                {
+                  "type": "subheading",
+                  "text": "D — świadomość i neurologia"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "ACVPU",
+                    "zachowanie dziecka",
+                    "kontakt",
+                    "drgawki",
+                    "nietypową senność",
+                    "osłabienie",
+                    "niedowład",
+                    "inne objawy neurologiczne"
+                  ]
+                },
+                {
+                  "type": "subheading",
+                  "text": "E — ekspozycja"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "urazy",
+                    "wysypkę",
+                    "oparzenia",
+                    "obrzęki",
+                    "nieprawidłowe ustawienie kończyn",
+                    "inne zmiany"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Chroń dziecko przed wychłodzeniem."
+                },
+                {
+                  "type": "subheading",
+                  "text": "Dalsze działania"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "nie pozostawiaj dziecka samego",
+                    "stale kontroluj oddech",
+                    "ponawiaj XABCDE",
+                    "obserwuj zmianę ACVPU",
+                    "uspokajaj dziecko i opiekuna"
+                  ]
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 5 · Niemowlę — ocena poszkodowanego",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Postępuj według schematu XABCDE."
+                },
+                {
+                  "type": "subheading",
+                  "text": "X — masywny krwotok"
+                },
+                {
+                  "type": "p",
+                  "text": "Sprawdź, czy występuje masywny krwotok. Zastosuj odpowiedni do miejsca urazu bezpośredni ucisk."
+                },
+                {
+                  "type": "subheading",
+                  "text": "A — drogi oddechowe"
+                },
+                {
+                  "type": "p",
+                  "text": "Utrzymuj głowę niemowlęcia w pozycji neutralnej. Delikatnie unieś żuchwę. Nie odginaj nadmiernie głowy, ponieważ może to pogorszyć drożność dróg oddechowych."
+                },
+                {
+                  "type": "subheading",
+                  "text": "B — oddychanie"
+                },
+                {
+                  "type": "p",
+                  "text": "Oceń oddech przez maksymalnie 10 sekund:"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "obserwuj ruchy klatki piersiowej",
+                    "słuchaj oddechu",
+                    "wyczuwaj przepływ powietrza"
+                  ]
+                },
+                {
+                  "type": "numbered",
+                  "items": [
+                    "Jeżeli niemowlę nie reaguje i nie oddycha prawidłowo, wykonaj 5 początkowych oddechów ratowniczych.",
+                    "Rozpocznij RKO.",
+                    "Zastosuj AED tak szybko, jak jest dostępny."
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Preferowany jest tryb pediatryczny AED, jeżeli urządzenie go posiada."
+                },
+                {
+                  "type": "p",
+                  "text": "Jeżeli elektrody nie mieszczą się na klatce piersiowej bez zetknięcia się ze sobą, należy zastosować układ przód–tył zgodnie z instrukcją AED."
+                },
+                {
+                  "type": "subheading",
+                  "text": "C — krążenie"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "kolor skóry",
+                    "temperaturę skóry",
+                    "ruch",
+                    "reakcję",
+                    "ogólny wygląd",
+                    "oznaki prawidłowego krążenia"
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "warning",
+                  "text": "Nie opóźniaj rozpoczęcia RKO w celu długiego poszukiwania tętna."
+                },
+                {
+                  "type": "subheading",
+                  "text": "D — świadomość i neurologia"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "reakcję",
+                    "kontakt",
+                    "wiotkość",
+                    "nietypową senność",
+                    "drgawki",
+                    "zmianę zachowania"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "ACVPU można wykorzystywać jako element szkoleniowego opisu stanu świadomości, pamiętając o ograniczeniach stosowania bodźców bólowych u niemowlęcia."
+                },
+                {
+                  "type": "subheading",
+                  "text": "E — ekspozycja"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "urazy",
+                    "wysypkę",
+                    "oparzenia",
+                    "obrzęki",
+                    "inne widoczne zmiany"
+                  ]
+                },
+                {
+                  "type": "p",
+                  "text": "Ogranicz czas odsłonięcia ciała niemowlęcia i chroń je przed wychłodzeniem."
+                },
+                {
+                  "type": "subheading",
+                  "text": "Dalsze działania"
+                },
+                {
+                  "type": "bullets",
+                  "items": [
+                    "stale kontroluj oddech",
+                    "ponawiaj ocenę XABCDE",
+                    "obserwuj zmianę stanu świadomości",
+                    "chroń niemowlę przed utratą ciepła",
+                    "przygotuj informacje dla zespołu ratownictwa medycznego"
+                  ]
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 6 · Parametry życiowe — wartości orientacyjne do nauki",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Poniższe wartości służą przede wszystkim do szkolenia, obserwacji i rozpoznawania odchyleń."
+                },
+                {
+                  "type": "p",
+                  "text": "Nie należy traktować jednej wartości jako samodzielnego kryterium rozpoznania stanu zagrożenia życia."
+                },
+                {
+                  "type": "p",
+                  "text": "Wartości u dzieci zmieniają się stopniowo wraz z wiekiem."
+                },
+                {
+                  "type": "table",
+                  "headers": [
+                    "Wiek",
+                    "Oddech/min",
+                    "Orientacyjnie / 10 s",
+                    "Tętno/min",
+                    "Orientacyjnie / 10 s"
+                  ],
+                  "rows": [
+                    [
+                      "ok. 1 miesiąca",
+                      "25–60",
+                      "4,2–10",
+                      "110–180",
+                      "18,3–30"
+                    ],
+                    [
+                      "ok. 1 roku",
+                      "20–50",
+                      "3,3–8,3",
+                      "100–170",
+                      "16,7–28,3"
+                    ],
+                    [
+                      "ok. 2 lat",
+                      "18–40",
+                      "3–6,7",
+                      "90–160",
+                      "15–26,7"
+                    ],
+                    [
+                      "ok. 5 lat",
+                      "17–30",
+                      "2,8–5",
+                      "70–140",
+                      "11,7–23,3"
+                    ],
+                    [
+                      "ok. 10 lat",
+                      "14–25",
+                      "2,3–4,2",
+                      "60–120",
+                      "10–20"
+                    ],
+                    [
+                      "ok. 18 lat / dorosły",
+                      "12–20",
+                      "2–3,3",
+                      "60–100",
+                      "10–16,7"
+                    ]
+                  ]
+                },
+                {
+                  "type": "note",
+                  "tone": "info",
+                  "text": "UWAGA SZKOLENIOWA: przeliczenie na 10 sekund ma ułatwiać naukę i szybką orientację. Ze względu na krótki czas obserwacji nie jest ono tak dokładne jak pomiar wykonywany przez dłuższy okres."
+                },
+                {
+                  "type": "note",
+                  "tone": "danger",
+                  "text": "Przy podejrzeniu zatrzymania krążenia najważniejsze są brak prawidłowej reakcji i brak prawidłowego oddechu. Nie opóźniaj RKO w celu dokładnego liczenia tętna."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "GRUPA III · Stany nagłe i bezpośrednie zagrożenie życia",
+          "subgroups": [
+            {
+              "title": "PODGRUPA 1 · Osoba dorosła",
+              "topics": [
+                {
+                  "title": "Utrata przytomności — dorosły",
+                  "path": "firstaid/ocena-dorosly"
+                },
+                {
+                  "title": "Utrata przytomności — kobieta w ciąży",
+                  "path": "firstaid/ocena-ciaza"
+                },
+                {
+                  "title": "Udrożnienie dróg oddechowych — dorosły",
+                  "path": "firstaid/drogi-oddechowe-dorosly"
+                },
+                {
+                  "title": "Zadławienie — dorosły",
+                  "path": "firstaid/zadlawienie-dorosly",
+                  "procedureId": "zadlawienie"
+                },
+                {
+                  "title": "RKO i AED — dorosły",
+                  "path": "firstaid/rko-dorosly",
+                  "procedureId": "rko-dorosly"
+                },
+                {
+                  "title": "RKO i AED — kobieta w ciąży",
+                  "path": "firstaid/rko-ciaza"
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 2 · Dziecko",
+              "topics": [
+                {
+                  "title": "Udrożnienie dróg oddechowych — dziecko",
+                  "path": "firstaid/drogi-oddechowe-dziecko"
+                },
+                {
+                  "title": "Utrata przytomności — dziecko",
+                  "path": "firstaid/ocena-dziecko"
+                },
+                {
+                  "title": "Zadławienie — dziecko",
+                  "path": "firstaid/zadlawienie-dziecko"
+                },
+                {
+                  "title": "RKO i AED — dziecko",
+                  "path": "firstaid/rko-dziecko",
+                  "procedureId": "rko-dziecko"
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 3 · Niemowlę",
+              "topics": [
+                {
+                  "title": "Udrożnienie dróg oddechowych — niemowlę",
+                  "path": "firstaid/drogi-oddechowe-niemowle"
+                },
+                {
+                  "title": "Utrata przytomności — niemowlę",
+                  "path": "firstaid/ocena-niemowle"
+                },
+                {
+                  "title": "Zadławienie — niemowlę",
+                  "path": "firstaid/zadlawienie-niemowle"
+                },
+                {
+                  "title": "RKO i AED — niemowlę",
+                  "path": "firstaid/rko-niemowle"
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 4 · Pozostałe stany nagłe",
+              "blocks": [
+                {
+                  "type": "p",
+                  "text": "Poniższe stany mogą wystąpić u poszkodowanych w różnych grupach wiekowych."
+                },
+                {
+                  "type": "p",
+                  "text": "Objawy, wartości prawidłowe oraz szczegóły postępowania mogą różnić się zależnie od wieku, stanu poszkodowanego oraz przyczyny zdarzenia."
+                },
+                {
+                  "type": "p",
+                  "text": "W poszczególnych procedurach należy wskazać odrębności dotyczące dorosłych, dzieci, niemowląt oraz kobiet w ciąży — jeżeli ciąża wpływa na sposób postępowania."
+                }
+              ],
+              "topics": [
+                {
+                  "title": "Duszność i ocena oddychania — tlenoterapia dla osób odpowiednio przeszkolonych",
+                  "path": "firstaid/trudnosci-oddechowe"
+                },
+                {
+                  "title": "Anafilaksja",
+                  "path": "firstaid/anafilaksja"
+                },
+                {
+                  "title": "Ból w klatce piersiowej — podejrzenie zawału",
+                  "path": "firstaid/zawal"
+                },
+                {
+                  "title": "Wstrząs i ochrona termiczna",
+                  "path": "firstaid/wstrzas"
+                },
+                {
+                  "title": "Drgawki",
+                  "path": "firstaid/drgawki",
+                  "procedureId": "drgawki"
+                },
+                {
+                  "title": "Hipoglikemia — niski poziom cukru",
+                  "path": "firstaid/hipoglikemia"
+                },
+                {
+                  "title": "Hiperglikemia",
+                  "path": "firstaid/hiperglikemia"
+                },
+                {
+                  "title": "Podejrzenie udaru",
+                  "path": "firstaid/udar",
+                  "procedureId": "udar"
+                },
+                {
+                  "title": "Omdlenie",
+                  "path": "firstaid/omdlenie"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "GRUPA IV · Urazy, rany i krwotoki",
+          "subgroups": [
+            {
+              "title": "PODGRUPA 1 · Krwotoki i rany",
+              "topics": [
+                {
+                  "title": "Masywny krwotok",
+                  "path": "firstaid/krwotok",
+                  "procedureId": "krwotok"
+                },
+                {
+                  "title": "Krwawienie i opatrunki",
+                  "path": "firstaid/krwawienie-opatrunki"
+                },
+                {
+                  "title": "Opatrunek uciskowy",
+                  "path": "firstaid/opatrunek-uciskowy"
+                },
+                {
+                  "title": "Rany — zasady ogólne",
+                  "path": "firstaid/rany"
+                },
+                {
+                  "title": "Ciało obce w ranie",
+                  "path": "firstaid/cialo-obce-rana"
+                },
+                {
+                  "title": "Rana penetrująca kończyny",
+                  "path": "firstaid/rana-penetrujaca-konczyna"
+                },
+                {
+                  "title": "Rana penetrująca brzucha",
+                  "path": "firstaid/rana-penetrujaca-brzuch"
+                },
+                {
+                  "title": "Otwarta / penetrująca rana klatki piersiowej",
+                  "path": "firstaid/rana-klatki-piersiowej"
+                },
+                {
+                  "title": "Amputacja urazowa",
+                  "path": "firstaid/amputacja"
+                }
+              ]
+            },
+            {
+              "title": "PODGRUPA 2 · Urazy",
+              "topics": [
+                {
+                  "title": "Uraz głowy",
+                  "path": "firstaid/uraz-glowy"
+                },
+                {
+                  "title": "Podejrzenie urazu kręgosłupa",
+                  "path": "firstaid/uraz-kregoslupa"
+                },
+                {
+                  "title": "Podejrzenie urazu miednicy",
+                  "path": "firstaid/uraz-miednicy"
+                },
+                {
+                  "title": "Uraz klatki piersiowej",
+                  "path": "firstaid/uraz-klatki"
+                },
+                {
+                  "title": "Uraz brzucha",
+                  "path": "firstaid/uraz-brzucha"
+                },
+                {
+                  "title": "Uraz kończyny",
+                  "path": "firstaid/uraz-konczyny"
+                },
+                {
+                  "title": "Skręcenie",
+                  "path": "firstaid/skrecenie"
+                },
+                {
+                  "title": "Zwichnięcie",
+                  "path": "firstaid/zwichniecie"
+                },
+                {
+                  "title": "Złamanie",
+                  "path": "firstaid/zlamanie"
+                },
+                {
+                  "title": "Przygniecenie / zmiażdżenie",
+                  "path": "firstaid/zmiazdzenie"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "GRUPA V · Czynniki środowiskowe",
+          "topics": [
+            {
+              "title": "Oparzenie termiczne",
+              "path": "firstaid/oparzenie",
+              "procedureId": "oparzenie"
+            },
+            {
+              "title": "Oparzenie chemiczne",
+              "path": "firstaid/oparzenie-chemiczne"
+            },
+            {
+              "title": "Porażenie prądem",
+              "path": "firstaid/porazenie-pradem",
+              "procedureId": "porazenie-pradem"
+            },
+            {
+              "title": "Wychłodzenie i hipotermia",
+              "path": "firstaid/wychlodzenie"
+            },
+            {
+              "title": "Odmrożenie",
+              "path": "firstaid/odmrozenie"
+            },
+            {
+              "title": "Przegrzanie",
+              "path": "firstaid/przegrzanie"
+            },
+            {
+              "title": "Udar cieplny",
+              "path": "firstaid/udar-cieplny"
+            },
+            {
+              "title": "Podtopienie / tonięcie",
+              "path": "firstaid/podtopienie"
+            }
+          ]
+        }
+      ]
+    },
     defaultState: {
       schemaVersion: 2,
       aeds: [
