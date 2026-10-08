@@ -5,7 +5,7 @@
   const STORAGE_KEY = 'ratownik_plk_v2_state';
   const LAST_ONLINE_KEY = 'ratownik_plk_v2_last_online';
   const STATE_SCHEMA_VERSION = 2;
-  const VALID_SCREENS = ['home', 'procedures', 'resources', 'tools'];
+  const VALID_SCREENS = ['home', 'firstaid', 'procedures', 'resources', 'tools'];
   const VALID_ENTITIES = ['aeds', 'kits'];
   const VALID_RESOURCES = ['aeds', 'kits', 'rescuers'];
   const BREATH_PREP_SECONDS = 2;
@@ -301,6 +301,7 @@
       if (window.location.hash !== hash) history.replaceState(null, '', hash);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (next === 'firstaid') renderFirstAid();
     if (next === 'resources') renderResources();
   }
 
@@ -365,6 +366,91 @@
       }
       return '';
     }).join('') + '</div>';
+  }
+
+  function renderFirstAidBlock(block) {
+    if (!block || typeof block !== 'object') return '';
+
+    if (block.type === 'p') {
+      return '<p class="firstaid-copy">' + esc(block.text) + '</p>';
+    }
+
+    if (block.type === 'subheading') {
+      return '<h4 class="firstaid-subheading">' + esc(block.text) + '</h4>';
+    }
+
+    if (block.type === 'bullets' || block.type === 'numbered') {
+      const tag = block.type === 'numbered' ? 'ol' : 'ul';
+      return '<' + tag + ' class="firstaid-list ' + block.type + '">' +
+        (block.items || []).map(function (item) { return '<li>' + esc(item) + '</li>'; }).join('') +
+        '</' + tag + '>';
+    }
+
+    if (block.type === 'scheme') {
+      return '<div class="firstaid-scheme">' + (block.items || []).map(function (item) {
+        return '<article class="firstaid-scheme-item"><span>' + esc(item.label) + '</span><div><strong>' +
+          esc(item.title) + '</strong><small>' + esc(item.text) + '</small></div></article>';
+      }).join('') + '</div>';
+    }
+
+    if (block.type === 'note') {
+      return '<div class="firstaid-note ' + esc(block.tone || 'info') + '"><strong>!</strong><span>' +
+        esc(block.text) + '</span></div>';
+    }
+
+    if (block.type === 'metric') {
+      return '<article class="firstaid-metric"><span>' + esc(block.label) + '</span><strong>' +
+        esc(block.value) + '</strong><small>' + esc(block.extra || '') + '</small></article>';
+    }
+
+    if (block.type === 'procedure') {
+      return '<button class="firstaid-procedure-link" type="button" data-procedure="' +
+        esc(block.procedureId) + '"><span aria-hidden="true">→</span><strong>' + esc(block.label) + '</strong></button>';
+    }
+
+    if (block.type === 'table') {
+      return '<div class="firstaid-table-wrap"><table class="firstaid-table"><thead><tr>' +
+        (block.headers || []).map(function (head) { return '<th scope="col">' + esc(head) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' +
+        (block.rows || []).map(function (row) {
+          return '<tr>' + row.map(function (cell) { return '<td>' + esc(cell) + '</td>'; }).join('') + '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+    }
+
+    return '';
+  }
+
+  function renderFirstAidTopics(topics) {
+    if (!Array.isArray(topics) || !topics.length) return '';
+    return '<div class="firstaid-topic-list">' + topics.map(function (topic) {
+      if (topic.procedureId && getProcedure(topic.procedureId)) {
+        return '<button class="firstaid-topic actionable" type="button" data-procedure="' + esc(topic.procedureId) +
+          '"><span>' + esc(topic.title) + '</span><strong aria-hidden="true">›</strong></button>';
+      }
+      return '<div class="firstaid-topic"><span>' + esc(topic.title) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  function renderFirstAidSubgroup(subgroup, groupIndex, subgroupIndex) {
+    const body = (subgroup.blocks || []).map(renderFirstAidBlock).join('') + renderFirstAidTopics(subgroup.topics);
+    const open = groupIndex === 1 && subgroupIndex === 0 ? ' open' : '';
+    return '<details class="firstaid-subgroup"' + open + '><summary><span>' + esc(subgroup.title) +
+      '</span><strong aria-hidden="true">+</strong></summary><div class="firstaid-subgroup-body">' + body + '</div></details>';
+  }
+
+  function renderFirstAid() {
+    const container = $('firstAidContent');
+    if (!container || !DATA.firstAidModule || !Array.isArray(DATA.firstAidModule.groups)) return;
+
+    container.innerHTML = DATA.firstAidModule.groups.map(function (group, groupIndex) {
+      const body = (group.subgroups || []).map(function (subgroup, subgroupIndex) {
+        return renderFirstAidSubgroup(subgroup, groupIndex, subgroupIndex);
+      }).join('') + renderFirstAidTopics(group.topics);
+      const open = groupIndex === 1 ? ' open' : '';
+      return '<details class="firstaid-group"' + open + '><summary><span>' + esc(group.title) +
+        '</span><strong aria-hidden="true">⌄</strong></summary><div class="firstaid-group-body">' + body + '</div></details>';
+    }).join('');
   }
 
   function renderQuickActions() {
@@ -1518,6 +1604,7 @@
     if (!DATA || !Array.isArray(DATA.procedures)) throw new Error('Brak danych aplikacji.');
     saveState();
     renderQuickActions();
+    renderFirstAid();
     renderProcedureFilters();
     renderProcedures();
     renderGuide('safety');
