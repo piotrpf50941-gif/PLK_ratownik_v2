@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'ratownik-plk-v2-2.6.1';
+const CACHE_NAME = 'ratownik-plk-v2-2.7.0';
 const APP_SHELL = [
   './',
   './index.html',
